@@ -1,0 +1,45 @@
+{
+  "best_objective": -1.850371707708594e-14,
+  "best_position": {
+    "choices": [
+      {
+        "slot": "E",
+        "module": "tour_edges_plus_neighbors",
+        "params": {}
+      },
+      {
+        "slot": "F",
+        "module": "tour_deviation",
+        "params": {}
+      },
+      {
+        "slot": "H",
+        "module": "power_decay",
+        "params": {
+          "gamma": 0.5
+        }
+      },
+      {
+        "slot": "T",
+        "module": "clip",
+        "params": {
+          "cap": 2.0
+        }
+      },
+      {
+        "slot": "W",
+        "module": "symmetric_add_normalized",
+        "params": {
+          "lambda": 1.0
+        }
+      }
+    ]
+  },
+  "best_position_text": "E=tour_edges_plus_neighbors | F=tour_deviation | H=power_decay({'gamma': 0.5}) | T=clip({'cap': 2.0}) | W=symmetric_add_normalized({'lambda': 1.0})",
+  "samples": 50,
+  "independent_evaluations": 50,
+  "cache_entries": 0,
+  "elapsed_seconds": 136.94481825828552,
+  "run_log": "D:\\spso-behavior-semantic-computing\\eoh\\examples\\tsp_gls_numba\\results_spso\\run_001\\run_log.txt",
+  "generation_metrics": "D:\\spso-behavior-semantic-computing\\eoh\\examples\\tsp_gls_numba\\results_spso\\run_001\\generation_metrics.jsonl"
+}

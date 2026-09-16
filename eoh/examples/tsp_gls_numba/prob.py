@@ -231,13 +231,16 @@ def local_search(init_tour, init_cost, D, N, first_improvement=False):
 
 def guided_local_search(edge_weight, nearest_indices, init_tour, init_cost,
                         t_lim, ite_max, perturbation_moves, update_fn,
-                        first_improvement=False):
+                        first_improvement=False, capture_best_route=False):
     # Fixed seed so the search is reproducible across runs.
     random.seed(2024)
 
     cur_route, cur_cost = local_search(init_tour, init_cost, edge_weight,
                                        nearest_indices, first_improvement)
     best_route, best_cost = cur_route, cur_cost
+    # Independent evidence of the historical minimum. Keep the legacy search
+    # trajectory (including its restart semantics) unchanged for comparisons.
+    recorded_best_route = cur_route.copy() if capture_best_route else None
 
     length = len(edge_weight[0])
     iter_i = 0
@@ -283,12 +286,14 @@ def guided_local_search(edge_weight, nearest_indices, init_tour, init_cost,
 
         if cur_cost < best_cost:
             best_route, best_cost = cur_route, cur_cost
+            if capture_best_route:
+                recorded_best_route = cur_route.copy()
         iter_i += 1
 
         if iter_i % 50 == 0:
             cur_route, cur_cost = best_route, best_cost
 
-    return best_route, best_cost, iter_i
+    return (recorded_best_route if capture_best_route else best_route), best_cost, iter_i
 
 
 def solve_instance(opt_cost, dis_matrix, time_limit, ite_max,

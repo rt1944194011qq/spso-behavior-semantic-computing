@@ -1,0 +1,45 @@
+{
+  "sample_id": 5,
+  "position": {
+    "choices": [
+      {
+        "slot": "E",
+        "module": "tour_edges_plus_neighbors",
+        "params": {}
+      },
+      {
+        "slot": "F",
+        "module": "tour_deviation",
+        "params": {}
+      },
+      {
+        "slot": "H",
+        "module": "power_decay",
+        "params": {
+          "gamma": 0.5
+        }
+      },
+      {
+        "slot": "T",
+        "module": "clip",
+        "params": {
+          "cap": 2.0
+        }
+      },
+      {
+        "slot": "W",
+        "module": "symmetric_add_normalized",
+        "params": {
+          "lambda": 1.0
+        }
+      }
+    ]
+  },
+  "position_text": "E=tour_edges_plus_neighbors | F=tour_deviation | H=power_decay({'gamma': 0.5}) | T=clip({'cap': 2.0}) | W=symmetric_add_normalized({'lambda': 1.0})",
+  "objective": -1.850371707708594e-14,
+  "code": "import numpy as np\n\ndef update_edge_distance(edge_distance, local_opt_tour, edge_n_used):\n    \"\"\"Compiled S-PSO TSP GLS heuristic.\n\n    Contract: edge_distance and edge_n_used are n-by-n matrices; local_opt_tour\n    is a length-n tour; the returned value is a new finite symmetric n-by-n\n    distance matrix.\n    \"\"\"\n    base = np.asarray(edge_distance, dtype=float)\n    tour = np.asarray(local_opt_tour, dtype=int).ravel()\n    used = np.asarray(edge_n_used, dtype=float)\n    if base.ndim != 2 or base.shape[0] != base.shape[1]:\n        raise ValueError(\"edge_distance must be a square matrix\")\n    n = base.shape[0]\n    if tour.size != n or used.shape != base.shape:\n        raise ValueError(\"TSP GLS input shapes are inconsistent\")\n    if not np.all(np.isfinite(base)) or not np.all(np.isfinite(used)):\n        raise ValueError(\"TSP GLS inputs must be finite\")\n    if n == 0:\n        return base.copy()\n    if np.any(tour < 0) or np.any(tour >= n):\n        raise ValueError(\"tour contains an invalid node\")\n\n    aug = base.copy()\n    positive = base[np.isfinite(base) & (base > 0.0)]\n    scale = float(np.mean(positive)) if positive.size else 1.0\n    if scale <= 0.0:\n        scale = 1.0\n    mean_used = float(np.mean(used))\n    tour_edges = [base[int(tour[i]), int(tour[(i + 1) % n])] for i in range(n)]\n    tour_positive = [value for value in tour_edges if value > 0.0]\n    tour_scale = float(np.mean(tour_positive)) if tour_positive else scale\n    pairs = []\n    for i in range(n):\n        u = int(tour[i])\n        v = int(tour[(i + 1) % n])\n        if u != v:\n            pairs.append((u, v))\n        nearest = int(np.argsort(base[u])[1]) if n > 1 else u\n        if u != nearest:\n            pairs.append((u, nearest))\n    unique_pairs = []\n    seen_pairs = set()\n    for u, v in pairs:\n        key = (min(u, v), max(u, v))\n        if u != v and key not in seen_pairs:\n            seen_pairs.add(key)\n            unique_pairs.append(key)\n    scored = []\n    for u, v in unique_pairs:\n        raw_score = max(0.0, base[u, v] / tour_scale) * ((1.0 + used[u, v]) ** (-0.5))\n        score = max(0.0, min(max(raw_score, 0.0), 2.0))\n        scored.append((float(score), u, v))\n    max_score = max((item[0] for item in scored), default=0.0)\n    if max_score > 0.0:\n        for score, u, v in scored:\n            delta = 1.0 * score / max_score\n            aug[u, v] += delta\n            aug[v, u] += delta\n    aug = 0.5 * (aug + aug.T)\n    np.fill_diagonal(aug, 0.0)\n    if not np.all(np.isfinite(aug)) or np.any(aug < 0.0):\n        raise ValueError(\"compiled heuristic produced an invalid matrix\")\n    return aug\n",
+  "algorithm": "candidate=tour_edges_plus_neighbors; feature=tour_deviation; history=power_decay; transform=clip; write=symmetric_add_normalized({'lambda': 1.0})",
+  "source": "initial",
+  "strategy": "B",
+  "cached": false
+}

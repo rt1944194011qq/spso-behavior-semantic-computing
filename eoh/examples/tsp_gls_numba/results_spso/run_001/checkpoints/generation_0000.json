@@ -1,0 +1,1854 @@
+{
+  "generation": 0,
+  "sample_count": 20,
+  "evaluation_count": 20,
+  "gbest_objective": -1.850371707708594e-14,
+  "gbest_position": {
+    "choices": [
+      {
+        "slot": "E",
+        "module": "tour_edges_plus_neighbors",
+        "params": {}
+      },
+      {
+        "slot": "F",
+        "module": "tour_deviation",
+        "params": {}
+      },
+      {
+        "slot": "H",
+        "module": "power_decay",
+        "params": {
+          "gamma": 0.5
+        }
+      },
+      {
+        "slot": "T",
+        "module": "clip",
+        "params": {
+          "cap": 2.0
+        }
+      },
+      {
+        "slot": "W",
+        "module": "symmetric_add_normalized",
+        "params": {
+          "lambda": 1.0
+        }
+      }
+    ]
+  },
+  "particles": [
+    {
+      "position": {
+        "choices": [
+          {
+            "slot": "E",
+            "module": "tour_edges_plus_neighbors",
+            "params": {}
+          },
+          {
+            "slot": "F",
+            "module": "tour_deviation",
+            "params": {}
+          },
+          {
+            "slot": "H",
+            "module": "power_decay",
+            "params": {
+              "gamma": 0.5
+            }
+          },
+          {
+            "slot": "T",
+            "module": "clip",
+            "params": {
+              "cap": 2.0
+            }
+          },
+          {
+            "slot": "W",
+            "module": "symmetric_add_normalized",
+            "params": {
+              "lambda": 1.0
+            }
+          }
+        ]
+      },
+      "velocity": {
+        "E": {
+          "tour_edges": 0.0,
+          "tour_edges_plus_neighbors": 0.0,
+          "tour_edges_k_neighbors": 0.0,
+          "two_opt_cross_edges": 0.0,
+          "high_usage_edges": 0.0,
+          "tour_and_high_usage": 0.0
+        },
+        "F": {
+          "edge_length": 0.0,
+          "relative_length": 0.0,
+          "tour_deviation": 0.0,
+          "inverse_length": 0.0,
+          "excess_over_mean": 0.0,
+          "squared_relative_length": 0.0
+        },
+        "H": {
+          "none": 0.0,
+          "inverse_count": 0.0,
+          "inverse_sqrt_count": 0.0,
+          "inverse_log_count": 0.0,
+          "power_decay": 0.0,
+          "exponential_decay": 0.0,
+          "usage_boost": 0.0
+        },
+        "T": {
+          "identity": 0.0,
+          "sqrt": 0.0,
+          "log1p": 0.0,
+          "square": 0.0,
+          "tanh_scale": 0.0,
+          "clip": 0.0
+        },
+        "W": {
+          "symmetric_add_all": 0.0,
+          "symmetric_add_topk": 0.0,
+          "symmetric_add_normalized": 0.0,
+          "symmetric_add_quantile": 0.0,
+          "symmetric_add_rank_weighted": 0.0,
+          "symmetric_add_usage_balanced": 0.0
+        }
+      },
+      "pbest_position": {
+        "choices": [
+          {
+            "slot": "E",
+            "module": "tour_edges_plus_neighbors",
+            "params": {}
+          },
+          {
+            "slot": "F",
+            "module": "tour_deviation",
+            "params": {}
+          },
+          {
+            "slot": "H",
+            "module": "power_decay",
+            "params": {
+              "gamma": 0.5
+            }
+          },
+          {
+            "slot": "T",
+            "module": "clip",
+            "params": {
+              "cap": 2.0
+            }
+          },
+          {
+            "slot": "W",
+            "module": "symmetric_add_normalized",
+            "params": {
+              "lambda": 1.0
+            }
+          }
+        ]
+      },
+      "pbest_objective": -1.850371707708594e-14,
+      "current_objective": -1.850371707708594e-14
+    },
+    {
+      "position": {
+        "choices": [
+          {
+            "slot": "E",
+            "module": "tour_edges_plus_neighbors",
+            "params": {}
+          },
+          {
+            "slot": "F",
+            "module": "squared_relative_length",
+            "params": {}
+          },
+          {
+            "slot": "H",
+            "module": "inverse_log_count",
+            "params": {}
+          },
+          {
+            "slot": "T",
+            "module": "clip",
+            "params": {
+              "cap": 2.0
+            }
+          },
+          {
+            "slot": "W",
+            "module": "symmetric_add_normalized",
+            "params": {
+              "lambda": 1.0
+            }
+          }
+        ]
+      },
+      "velocity": {
+        "E": {
+          "tour_edges": 0.0,
+          "tour_edges_plus_neighbors": 0.0,
+          "tour_edges_k_neighbors": 0.0,
+          "two_opt_cross_edges": 0.0,
+          "high_usage_edges": 0.0,
+          "tour_and_high_usage": 0.0
+        },
+        "F": {
+          "edge_length": 0.0,
+          "relative_length": 0.0,
+          "tour_deviation": 0.0,
+          "inverse_length": 0.0,
+          "excess_over_mean": 0.0,
+          "squared_relative_length": 0.0
+        },
+        "H": {
+          "none": 0.0,
+          "inverse_count": 0.0,
+          "inverse_sqrt_count": 0.0,
+          "inverse_log_count": 0.0,
+          "power_decay": 0.0,
+          "exponential_decay": 0.0,
+          "usage_boost": 0.0
+        },
+        "T": {
+          "identity": 0.0,
+          "sqrt": 0.0,
+          "log1p": 0.0,
+          "square": 0.0,
+          "tanh_scale": 0.0,
+          "clip": 0.0
+        },
+        "W": {
+          "symmetric_add_all": 0.0,
+          "symmetric_add_topk": 0.0,
+          "symmetric_add_normalized": 0.0,
+          "symmetric_add_quantile": 0.0,
+          "symmetric_add_rank_weighted": 0.0,
+          "symmetric_add_usage_balanced": 0.0
+        }
+      },
+      "pbest_position": {
+        "choices": [
+          {
+            "slot": "E",
+            "module": "tour_edges_plus_neighbors",
+            "params": {}
+          },
+          {
+            "slot": "F",
+            "module": "squared_relative_length",
+            "params": {}
+          },
+          {
+            "slot": "H",
+            "module": "inverse_log_count",
+            "params": {}
+          },
+          {
+            "slot": "T",
+            "module": "clip",
+            "params": {
+              "cap": 2.0
+            }
+          },
+          {
+            "slot": "W",
+            "module": "symmetric_add_normalized",
+            "params": {
+              "lambda": 1.0
+            }
+          }
+        ]
+      },
+      "pbest_objective": 0.01171017759545867,
+      "current_objective": 0.01171017759545867
+    },
+    {
+      "position": {
+        "choices": [
+          {
+            "slot": "E",
+            "module": "tour_edges_plus_neighbors",
+            "params": {}
+          },
+          {
+            "slot": "F",
+            "module": "tour_deviation",
+            "params": {}
+          },
+          {
+            "slot": "H",
+            "module": "inverse_log_count",
+            "params": {}
+          },
+          {
+            "slot": "T",
+            "module": "tanh_scale",
+            "params": {
+              "tau": 1.0
+            }
+          },
+          {
+            "slot": "W",
+            "module": "symmetric_add_normalized",
+            "params": {
+              "lambda": 1.0
+            }
+          }
+        ]
+      },
+      "velocity": {
+        "E": {
+          "tour_edges": 0.0,
+          "tour_edges_plus_neighbors": 0.0,
+          "tour_edges_k_neighbors": 0.0,
+          "two_opt_cross_edges": 0.0,
+          "high_usage_edges": 0.0,
+          "tour_and_high_usage": 0.0
+        },
+        "F": {
+          "edge_length": 0.0,
+          "relative_length": 0.0,
+          "tour_deviation": 0.0,
+          "inverse_length": 0.0,
+          "excess_over_mean": 0.0,
+          "squared_relative_length": 0.0
+        },
+        "H": {
+          "none": 0.0,
+          "inverse_count": 0.0,
+          "inverse_sqrt_count": 0.0,
+          "inverse_log_count": 0.0,
+          "power_decay": 0.0,
+          "exponential_decay": 0.0,
+          "usage_boost": 0.0
+        },
+        "T": {
+          "identity": 0.0,
+          "sqrt": 0.0,
+          "log1p": 0.0,
+          "square": 0.0,
+          "tanh_scale": 0.0,
+          "clip": 0.0
+        },
+        "W": {
+          "symmetric_add_all": 0.0,
+          "symmetric_add_topk": 0.0,
+          "symmetric_add_normalized": 0.0,
+          "symmetric_add_quantile": 0.0,
+          "symmetric_add_rank_weighted": 0.0,
+          "symmetric_add_usage_balanced": 0.0
+        }
+      },
+      "pbest_position": {
+        "choices": [
+          {
+            "slot": "E",
+            "module": "tour_edges_plus_neighbors",
+            "params": {}
+          },
+          {
+            "slot": "F",
+            "module": "tour_deviation",
+            "params": {}
+          },
+          {
+            "slot": "H",
+            "module": "inverse_log_count",
+            "params": {}
+          },
+          {
+            "slot": "T",
+            "module": "tanh_scale",
+            "params": {
+              "tau": 1.0
+            }
+          },
+          {
+            "slot": "W",
+            "module": "symmetric_add_normalized",
+            "params": {
+              "lambda": 1.0
+            }
+          }
+        ]
+      },
+      "pbest_objective": 0.03316888598483928,
+      "current_objective": 0.03316888598483928
+    },
+    {
+      "position": {
+        "choices": [
+          {
+            "slot": "E",
+            "module": "tour_and_high_usage",
+            "params": {
+              "k": 5
+            }
+          },
+          {
+            "slot": "F",
+            "module": "inverse_length",
+            "params": {}
+          },
+          {
+            "slot": "H",
+            "module": "exponential_decay",
+            "params": {
+              "tau": 3.0
+            }
+          },
+          {
+            "slot": "T",
+            "module": "clip",
+            "params": {
+              "cap": 2.0
+            }
+          },
+          {
+            "slot": "W",
+            "module": "symmetric_add_topk",
+            "params": {
+              "k": 5,
+              "lambda": 1.0
+            }
+          }
+        ]
+      },
+      "velocity": {
+        "E": {
+          "tour_edges": 0.0,
+          "tour_edges_plus_neighbors": 0.0,
+          "tour_edges_k_neighbors": 0.0,
+          "two_opt_cross_edges": 0.0,
+          "high_usage_edges": 0.0,
+          "tour_and_high_usage": 0.0
+        },
+        "F": {
+          "edge_length": 0.0,
+          "relative_length": 0.0,
+          "tour_deviation": 0.0,
+          "inverse_length": 0.0,
+          "excess_over_mean": 0.0,
+          "squared_relative_length": 0.0
+        },
+        "H": {
+          "none": 0.0,
+          "inverse_count": 0.0,
+          "inverse_sqrt_count": 0.0,
+          "inverse_log_count": 0.0,
+          "power_decay": 0.0,
+          "exponential_decay": 0.0,
+          "usage_boost": 0.0
+        },
+        "T": {
+          "identity": 0.0,
+          "sqrt": 0.0,
+          "log1p": 0.0,
+          "square": 0.0,
+          "tanh_scale": 0.0,
+          "clip": 0.0
+        },
+        "W": {
+          "symmetric_add_all": 0.0,
+          "symmetric_add_topk": 0.0,
+          "symmetric_add_normalized": 0.0,
+          "symmetric_add_quantile": 0.0,
+          "symmetric_add_rank_weighted": 0.0,
+          "symmetric_add_usage_balanced": 0.0
+        }
+      },
+      "pbest_position": {
+        "choices": [
+          {
+            "slot": "E",
+            "module": "tour_and_high_usage",
+            "params": {
+              "k": 5
+            }
+          },
+          {
+            "slot": "F",
+            "module": "inverse_length",
+            "params": {}
+          },
+          {
+            "slot": "H",
+            "module": "exponential_decay",
+            "params": {
+              "tau": 3.0
+            }
+          },
+          {
+            "slot": "T",
+            "module": "clip",
+            "params": {
+              "cap": 2.0
+            }
+          },
+          {
+            "slot": "W",
+            "module": "symmetric_add_topk",
+            "params": {
+              "k": 5,
+              "lambda": 1.0
+            }
+          }
+        ]
+      },
+      "pbest_objective": 0.033530590174801755,
+      "current_objective": 0.033530590174801755
+    },
+    {
+      "position": {
+        "choices": [
+          {
+            "slot": "E",
+            "module": "tour_edges_plus_neighbors",
+            "params": {}
+          },
+          {
+            "slot": "F",
+            "module": "tour_deviation",
+            "params": {}
+          },
+          {
+            "slot": "H",
+            "module": "inverse_log_count",
+            "params": {}
+          },
+          {
+            "slot": "T",
+            "module": "tanh_scale",
+            "params": {
+              "tau": 1.0
+            }
+          },
+          {
+            "slot": "W",
+            "module": "symmetric_add_usage_balanced",
+            "params": {
+              "lambda": 1.0
+            }
+          }
+        ]
+      },
+      "velocity": {
+        "E": {
+          "tour_edges": 0.0,
+          "tour_edges_plus_neighbors": 0.0,
+          "tour_edges_k_neighbors": 0.0,
+          "two_opt_cross_edges": 0.0,
+          "high_usage_edges": 0.0,
+          "tour_and_high_usage": 0.0
+        },
+        "F": {
+          "edge_length": 0.0,
+          "relative_length": 0.0,
+          "tour_deviation": 0.0,
+          "inverse_length": 0.0,
+          "excess_over_mean": 0.0,
+          "squared_relative_length": 0.0
+        },
+        "H": {
+          "none": 0.0,
+          "inverse_count": 0.0,
+          "inverse_sqrt_count": 0.0,
+          "inverse_log_count": 0.0,
+          "power_decay": 0.0,
+          "exponential_decay": 0.0,
+          "usage_boost": 0.0
+        },
+        "T": {
+          "identity": 0.0,
+          "sqrt": 0.0,
+          "log1p": 0.0,
+          "square": 0.0,
+          "tanh_scale": 0.0,
+          "clip": 0.0
+        },
+        "W": {
+          "symmetric_add_all": 0.0,
+          "symmetric_add_topk": 0.0,
+          "symmetric_add_normalized": 0.0,
+          "symmetric_add_quantile": 0.0,
+          "symmetric_add_rank_weighted": 0.0,
+          "symmetric_add_usage_balanced": 0.0
+        }
+      },
+      "pbest_position": {
+        "choices": [
+          {
+            "slot": "E",
+            "module": "tour_edges_plus_neighbors",
+            "params": {}
+          },
+          {
+            "slot": "F",
+            "module": "tour_deviation",
+            "params": {}
+          },
+          {
+            "slot": "H",
+            "module": "inverse_log_count",
+            "params": {}
+          },
+          {
+            "slot": "T",
+            "module": "tanh_scale",
+            "params": {
+              "tau": 1.0
+            }
+          },
+          {
+            "slot": "W",
+            "module": "symmetric_add_usage_balanced",
+            "params": {
+              "lambda": 1.0
+            }
+          }
+        ]
+      },
+      "pbest_objective": 0.04165844037773795,
+      "current_objective": 0.04165844037773795
+    },
+    {
+      "position": {
+        "choices": [
+          {
+            "slot": "E",
+            "module": "tour_edges_k_neighbors",
+            "params": {
+              "k": 3
+            }
+          },
+          {
+            "slot": "F",
+            "module": "inverse_length",
+            "params": {}
+          },
+          {
+            "slot": "H",
+            "module": "power_decay",
+            "params": {
+              "gamma": 0.5
+            }
+          },
+          {
+            "slot": "T",
+            "module": "clip",
+            "params": {
+              "cap": 2.0
+            }
+          },
+          {
+            "slot": "W",
+            "module": "symmetric_add_rank_weighted",
+            "params": {
+              "exponent": 0.5,
+              "lambda": 1.0
+            }
+          }
+        ]
+      },
+      "velocity": {
+        "E": {
+          "tour_edges": 0.0,
+          "tour_edges_plus_neighbors": 0.0,
+          "tour_edges_k_neighbors": 0.0,
+          "two_opt_cross_edges": 0.0,
+          "high_usage_edges": 0.0,
+          "tour_and_high_usage": 0.0
+        },
+        "F": {
+          "edge_length": 0.0,
+          "relative_length": 0.0,
+          "tour_deviation": 0.0,
+          "inverse_length": 0.0,
+          "excess_over_mean": 0.0,
+          "squared_relative_length": 0.0
+        },
+        "H": {
+          "none": 0.0,
+          "inverse_count": 0.0,
+          "inverse_sqrt_count": 0.0,
+          "inverse_log_count": 0.0,
+          "power_decay": 0.0,
+          "exponential_decay": 0.0,
+          "usage_boost": 0.0
+        },
+        "T": {
+          "identity": 0.0,
+          "sqrt": 0.0,
+          "log1p": 0.0,
+          "square": 0.0,
+          "tanh_scale": 0.0,
+          "clip": 0.0
+        },
+        "W": {
+          "symmetric_add_all": 0.0,
+          "symmetric_add_topk": 0.0,
+          "symmetric_add_normalized": 0.0,
+          "symmetric_add_quantile": 0.0,
+          "symmetric_add_rank_weighted": 0.0,
+          "symmetric_add_usage_balanced": 0.0
+        }
+      },
+      "pbest_position": {
+        "choices": [
+          {
+            "slot": "E",
+            "module": "tour_edges_k_neighbors",
+            "params": {
+              "k": 3
+            }
+          },
+          {
+            "slot": "F",
+            "module": "inverse_length",
+            "params": {}
+          },
+          {
+            "slot": "H",
+            "module": "power_decay",
+            "params": {
+              "gamma": 0.5
+            }
+          },
+          {
+            "slot": "T",
+            "module": "clip",
+            "params": {
+              "cap": 2.0
+            }
+          },
+          {
+            "slot": "W",
+            "module": "symmetric_add_rank_weighted",
+            "params": {
+              "exponent": 0.5,
+              "lambda": 1.0
+            }
+          }
+        ]
+      },
+      "pbest_objective": 0.46695360901534144,
+      "current_objective": 0.46695360901534144
+    },
+    {
+      "position": {
+        "choices": [
+          {
+            "slot": "E",
+            "module": "tour_edges_plus_neighbors",
+            "params": {}
+          },
+          {
+            "slot": "F",
+            "module": "edge_length",
+            "params": {}
+          },
+          {
+            "slot": "H",
+            "module": "usage_boost",
+            "params": {
+              "strength": 0.5
+            }
+          },
+          {
+            "slot": "T",
+            "module": "log1p",
+            "params": {}
+          },
+          {
+            "slot": "W",
+            "module": "symmetric_add_rank_weighted",
+            "params": {
+              "exponent": 0.5,
+              "lambda": 1.0
+            }
+          }
+        ]
+      },
+      "velocity": {
+        "E": {
+          "tour_edges": 0.0,
+          "tour_edges_plus_neighbors": 0.0,
+          "tour_edges_k_neighbors": 0.0,
+          "two_opt_cross_edges": 0.0,
+          "high_usage_edges": 0.0,
+          "tour_and_high_usage": 0.0
+        },
+        "F": {
+          "edge_length": 0.0,
+          "relative_length": 0.0,
+          "tour_deviation": 0.0,
+          "inverse_length": 0.0,
+          "excess_over_mean": 0.0,
+          "squared_relative_length": 0.0
+        },
+        "H": {
+          "none": 0.0,
+          "inverse_count": 0.0,
+          "inverse_sqrt_count": 0.0,
+          "inverse_log_count": 0.0,
+          "power_decay": 0.0,
+          "exponential_decay": 0.0,
+          "usage_boost": 0.0
+        },
+        "T": {
+          "identity": 0.0,
+          "sqrt": 0.0,
+          "log1p": 0.0,
+          "square": 0.0,
+          "tanh_scale": 0.0,
+          "clip": 0.0
+        },
+        "W": {
+          "symmetric_add_all": 0.0,
+          "symmetric_add_topk": 0.0,
+          "symmetric_add_normalized": 0.0,
+          "symmetric_add_quantile": 0.0,
+          "symmetric_add_rank_weighted": 0.0,
+          "symmetric_add_usage_balanced": 0.0
+        }
+      },
+      "pbest_position": {
+        "choices": [
+          {
+            "slot": "E",
+            "module": "tour_edges_plus_neighbors",
+            "params": {}
+          },
+          {
+            "slot": "F",
+            "module": "edge_length",
+            "params": {}
+          },
+          {
+            "slot": "H",
+            "module": "usage_boost",
+            "params": {
+              "strength": 0.5
+            }
+          },
+          {
+            "slot": "T",
+            "module": "log1p",
+            "params": {}
+          },
+          {
+            "slot": "W",
+            "module": "symmetric_add_rank_weighted",
+            "params": {
+              "exponent": 0.5,
+              "lambda": 1.0
+            }
+          }
+        ]
+      },
+      "pbest_objective": 0.9834166013383902,
+      "current_objective": 0.9834166013383902
+    },
+    {
+      "position": {
+        "choices": [
+          {
+            "slot": "E",
+            "module": "tour_and_high_usage",
+            "params": {
+              "k": 5
+            }
+          },
+          {
+            "slot": "F",
+            "module": "squared_relative_length",
+            "params": {}
+          },
+          {
+            "slot": "H",
+            "module": "inverse_count",
+            "params": {}
+          },
+          {
+            "slot": "T",
+            "module": "log1p",
+            "params": {}
+          },
+          {
+            "slot": "W",
+            "module": "symmetric_add_quantile",
+            "params": {
+              "fraction": 0.5,
+              "lambda": 1.0
+            }
+          }
+        ]
+      },
+      "velocity": {
+        "E": {
+          "tour_edges": 0.0,
+          "tour_edges_plus_neighbors": 0.0,
+          "tour_edges_k_neighbors": 0.0,
+          "two_opt_cross_edges": 0.0,
+          "high_usage_edges": 0.0,
+          "tour_and_high_usage": 0.0
+        },
+        "F": {
+          "edge_length": 0.0,
+          "relative_length": 0.0,
+          "tour_deviation": 0.0,
+          "inverse_length": 0.0,
+          "excess_over_mean": 0.0,
+          "squared_relative_length": 0.0
+        },
+        "H": {
+          "none": 0.0,
+          "inverse_count": 0.0,
+          "inverse_sqrt_count": 0.0,
+          "inverse_log_count": 0.0,
+          "power_decay": 0.0,
+          "exponential_decay": 0.0,
+          "usage_boost": 0.0
+        },
+        "T": {
+          "identity": 0.0,
+          "sqrt": 0.0,
+          "log1p": 0.0,
+          "square": 0.0,
+          "tanh_scale": 0.0,
+          "clip": 0.0
+        },
+        "W": {
+          "symmetric_add_all": 0.0,
+          "symmetric_add_topk": 0.0,
+          "symmetric_add_normalized": 0.0,
+          "symmetric_add_quantile": 0.0,
+          "symmetric_add_rank_weighted": 0.0,
+          "symmetric_add_usage_balanced": 0.0
+        }
+      },
+      "pbest_position": {
+        "choices": [
+          {
+            "slot": "E",
+            "module": "tour_and_high_usage",
+            "params": {
+              "k": 5
+            }
+          },
+          {
+            "slot": "F",
+            "module": "squared_relative_length",
+            "params": {}
+          },
+          {
+            "slot": "H",
+            "module": "inverse_count",
+            "params": {}
+          },
+          {
+            "slot": "T",
+            "module": "log1p",
+            "params": {}
+          },
+          {
+            "slot": "W",
+            "module": "symmetric_add_quantile",
+            "params": {
+              "fraction": 0.5,
+              "lambda": 1.0
+            }
+          }
+        ]
+      },
+      "pbest_objective": 1.7674732534276316,
+      "current_objective": 1.7674732534276316
+    },
+    {
+      "position": {
+        "choices": [
+          {
+            "slot": "E",
+            "module": "tour_edges_plus_neighbors",
+            "params": {}
+          },
+          {
+            "slot": "F",
+            "module": "relative_length",
+            "params": {}
+          },
+          {
+            "slot": "H",
+            "module": "inverse_log_count",
+            "params": {}
+          },
+          {
+            "slot": "T",
+            "module": "log1p",
+            "params": {}
+          },
+          {
+            "slot": "W",
+            "module": "symmetric_add_topk",
+            "params": {
+              "k": 5,
+              "lambda": 1.0
+            }
+          }
+        ]
+      },
+      "velocity": {
+        "E": {
+          "tour_edges": 0.0,
+          "tour_edges_plus_neighbors": 0.0,
+          "tour_edges_k_neighbors": 0.0,
+          "two_opt_cross_edges": 0.0,
+          "high_usage_edges": 0.0,
+          "tour_and_high_usage": 0.0
+        },
+        "F": {
+          "edge_length": 0.0,
+          "relative_length": 0.0,
+          "tour_deviation": 0.0,
+          "inverse_length": 0.0,
+          "excess_over_mean": 0.0,
+          "squared_relative_length": 0.0
+        },
+        "H": {
+          "none": 0.0,
+          "inverse_count": 0.0,
+          "inverse_sqrt_count": 0.0,
+          "inverse_log_count": 0.0,
+          "power_decay": 0.0,
+          "exponential_decay": 0.0,
+          "usage_boost": 0.0
+        },
+        "T": {
+          "identity": 0.0,
+          "sqrt": 0.0,
+          "log1p": 0.0,
+          "square": 0.0,
+          "tanh_scale": 0.0,
+          "clip": 0.0
+        },
+        "W": {
+          "symmetric_add_all": 0.0,
+          "symmetric_add_topk": 0.0,
+          "symmetric_add_normalized": 0.0,
+          "symmetric_add_quantile": 0.0,
+          "symmetric_add_rank_weighted": 0.0,
+          "symmetric_add_usage_balanced": 0.0
+        }
+      },
+      "pbest_position": {
+        "choices": [
+          {
+            "slot": "E",
+            "module": "tour_edges_plus_neighbors",
+            "params": {}
+          },
+          {
+            "slot": "F",
+            "module": "relative_length",
+            "params": {}
+          },
+          {
+            "slot": "H",
+            "module": "inverse_log_count",
+            "params": {}
+          },
+          {
+            "slot": "T",
+            "module": "log1p",
+            "params": {}
+          },
+          {
+            "slot": "W",
+            "module": "symmetric_add_topk",
+            "params": {
+              "k": 5,
+              "lambda": 1.0
+            }
+          }
+        ]
+      },
+      "pbest_objective": 2.0094362082735038,
+      "current_objective": 2.0094362082735038
+    },
+    {
+      "position": {
+        "choices": [
+          {
+            "slot": "E",
+            "module": "tour_edges_k_neighbors",
+            "params": {
+              "k": 3
+            }
+          },
+          {
+            "slot": "F",
+            "module": "tour_deviation",
+            "params": {}
+          },
+          {
+            "slot": "H",
+            "module": "usage_boost",
+            "params": {
+              "strength": 0.5
+            }
+          },
+          {
+            "slot": "T",
+            "module": "sqrt",
+            "params": {}
+          },
+          {
+            "slot": "W",
+            "module": "symmetric_add_normalized",
+            "params": {
+              "lambda": 1.0
+            }
+          }
+        ]
+      },
+      "velocity": {
+        "E": {
+          "tour_edges": 0.0,
+          "tour_edges_plus_neighbors": 0.0,
+          "tour_edges_k_neighbors": 0.0,
+          "two_opt_cross_edges": 0.0,
+          "high_usage_edges": 0.0,
+          "tour_and_high_usage": 0.0
+        },
+        "F": {
+          "edge_length": 0.0,
+          "relative_length": 0.0,
+          "tour_deviation": 0.0,
+          "inverse_length": 0.0,
+          "excess_over_mean": 0.0,
+          "squared_relative_length": 0.0
+        },
+        "H": {
+          "none": 0.0,
+          "inverse_count": 0.0,
+          "inverse_sqrt_count": 0.0,
+          "inverse_log_count": 0.0,
+          "power_decay": 0.0,
+          "exponential_decay": 0.0,
+          "usage_boost": 0.0
+        },
+        "T": {
+          "identity": 0.0,
+          "sqrt": 0.0,
+          "log1p": 0.0,
+          "square": 0.0,
+          "tanh_scale": 0.0,
+          "clip": 0.0
+        },
+        "W": {
+          "symmetric_add_all": 0.0,
+          "symmetric_add_topk": 0.0,
+          "symmetric_add_normalized": 0.0,
+          "symmetric_add_quantile": 0.0,
+          "symmetric_add_rank_weighted": 0.0,
+          "symmetric_add_usage_balanced": 0.0
+        }
+      },
+      "pbest_position": {
+        "choices": [
+          {
+            "slot": "E",
+            "module": "tour_edges_k_neighbors",
+            "params": {
+              "k": 3
+            }
+          },
+          {
+            "slot": "F",
+            "module": "tour_deviation",
+            "params": {}
+          },
+          {
+            "slot": "H",
+            "module": "usage_boost",
+            "params": {
+              "strength": 0.5
+            }
+          },
+          {
+            "slot": "T",
+            "module": "sqrt",
+            "params": {}
+          },
+          {
+            "slot": "W",
+            "module": "symmetric_add_normalized",
+            "params": {
+              "lambda": 1.0
+            }
+          }
+        ]
+      },
+      "pbest_objective": 3.215467926703331,
+      "current_objective": 3.215467926703331
+    }
+  ],
+  "cache": {},
+  "rng_state": [
+    3,
+    [
+      2158483433,
+      518101116,
+      1789198296,
+      1904913642,
+      2474285188,
+      2180143967,
+      2537124801,
+      2425256607,
+      3030715080,
+      1035038234,
+      966607382,
+      1954390802,
+      2662619318,
+      1196427934,
+      935843997,
+      3830198936,
+      1654730077,
+      3624664359,
+      717071671,
+      3304686893,
+      842317955,
+      215806275,
+      186987651,
+      2946532956,
+      3083813309,
+      3121509617,
+      4242838310,
+      3460640271,
+      238742474,
+      474159972,
+      2632549702,
+      1398398820,
+      2221837593,
+      4184479674,
+      303007387,
+      3836123145,
+      2183211284,
+      1337556151,
+      3186623636,
+      1489023387,
+      291371699,
+      1987563919,
+      11362688,
+      4220284777,
+      1781691531,
+      4260648242,
+      3972819304,
+      2906825964,
+      4065832494,
+      3217580680,
+      2264926814,
+      323141470,
+      1983410848,
+      3186780419,
+      1461292967,
+      3859687545,
+      1479214249,
+      4254313278,
+      2750546960,
+      2231156595,
+      295049999,
+      231780504,
+      283638122,
+      2866867903,
+      4143308523,
+      1436283357,
+      1869146071,
+      1208768299,
+      2368309180,
+      2938843917,
+      2070545285,
+      1734205949,
+      1269700203,
+      2558866355,
+      2314420350,
+      2357555942,
+      1131182045,
+      2786401318,
+      2471497594,
+      4236253510,
+      2865255651,
+      2796485076,
+      1359726150,
+      1207971429,
+      3989662607,
+      4152607822,
+      116199700,
+      2752843315,
+      2242997740,
+      1513932167,
+      7388502,
+      3926075184,
+      3915672860,
+      3357654338,
+      2744494312,
+      2809507183,
+      2453646534,
+      3569758595,
+      1007406647,
+      1040401818,
+      2668106900,
+      2710385812,
+      1608209920,
+      1770856199,
+      3388470251,
+      3663499770,
+      282976174,
+      4056556882,
+      3561994384,
+      1966430048,
+      3603241605,
+      4082906506,
+      860082300,
+      3924729382,
+      673755541,
+      2977390414,
+      1958219816,
+      1283822980,
+      3847543329,
+      272721308,
+      2533508215,
+      4238275513,
+      1883330496,
+      1057726439,
+      3583869806,
+      3171336276,
+      2860301083,
+      783964861,
+      2685356853,
+      136185633,
+      970407920,
+      3077651204,
+      2255386612,
+      400655880,
+      2329998422,
+      574730684,
+      574113315,
+      3945585258,
+      514369838,
+      736116333,
+      1896980190,
+      242108542,
+      3949479583,
+      773557713,
+      1817916358,
+      2307560076,
+      3758983305,
+      120027736,
+      1565089138,
+      3704494114,
+      4044517237,
+      3438571174,
+      488148062,
+      1232784660,
+      1238830330,
+      792741263,
+      3367688276,
+      65423928,
+      2301876795,
+      2947844601,
+      718910510,
+      1527392073,
+      2468547272,
+      1890007999,
+      309761021,
+      3152832452,
+      8115740,
+      3859394490,
+      4287446139,
+      3450373434,
+      2297830840,
+      2937929153,
+      2439414994,
+      3040639486,
+      2007964521,
+      3545756117,
+      1467889080,
+      3108664274,
+      3170259875,
+      160517775,
+      1493473766,
+      3181318102,
+      3328393619,
+      3271648927,
+      2434665746,
+      3318847571,
+      3930733996,
+      1010424818,
+      3673683086,
+      2792904843,
+      3180978319,
+      3680181986,
+      922971537,
+      4029705755,
+      696206433,
+      3752390799,
+      1200799430,
+      2186485245,
+      295453767,
+      934177249,
+      2606928713,
+      3334890622,
+      198137570,
+      3648353785,
+      1292229591,
+      253990173,
+      995305676,
+      1862181437,
+      2428124828,
+      512223468,
+      3121365310,
+      3942168968,
+      1074181847,
+      3162235931,
+      789905065,
+      3502658280,
+      3746093877,
+      303716062,
+      3085507817,
+      359197716,
+      6763178,
+      689306217,
+      3815568731,
+      3126066225,
+      988032478,
+      2594597641,
+      3028933353,
+      349718310,
+      4026589755,
+      295755002,
+      3350146192,
+      2841196304,
+      897551845,
+      3962045397,
+      4285334374,
+      745321248,
+      425218706,
+      1285486463,
+      2709242034,
+      3345813844,
+      522687310,
+      701612134,
+      974314759,
+      2668015468,
+      1833530024,
+      3335072693,
+      2602446593,
+      2230564429,
+      756258032,
+      2392254321,
+      829836501,
+      3367630597,
+      2707877358,
+      3148814583,
+      3542172,
+      3660595511,
+      663334410,
+      1334587842,
+      601301699,
+      1144932378,
+      789558335,
+      3353607999,
+      2334424476,
+      3289668756,
+      3138921030,
+      1582833714,
+      1097190843,
+      4225692209,
+      3209541460,
+      2474581978,
+      985729785,
+      3351155400,
+      2849733603,
+      1707081322,
+      1222996309,
+      3406785704,
+      3921461631,
+      188273131,
+      1995272368,
+      3959376555,
+      2514318122,
+      1975914970,
+      1563292948,
+      3760463645,
+      1634847181,
+      968655603,
+      3349626642,
+      586922789,
+      1756180951,
+      2360041182,
+      905397080,
+      3037984895,
+      3479728311,
+      1039833668,
+      1804012647,
+      805852903,
+      2367003660,
+      1216949068,
+      381163878,
+      2438743946,
+      3539749822,
+      3510019378,
+      1709694913,
+      3315912329,
+      1158555254,
+      1640075951,
+      161634440,
+      1706294872,
+      2674188103,
+      1396568828,
+      3293494937,
+      4024643517,
+      3805833699,
+      545859971,
+      4260361731,
+      153036866,
+      4040063322,
+      3423213587,
+      3818956486,
+      1355397405,
+      1635583130,
+      2472888288,
+      2613832933,
+      119339953,
+      2566781990,
+      3728487978,
+      1670461416,
+      2480067347,
+      177406163,
+      3864674440,
+      1864665259,
+      564004719,
+      1164221005,
+      1086803915,
+      973115551,
+      1354589677,
+      3621834055,
+      1890185691,
+      3730780817,
+      1330924148,
+      3114233670,
+      3400394666,
+      3874679562,
+      614530663,
+      2655215977,
+      2604194423,
+      1376727593,
+      2898541037,
+      3117486078,
+      761751617,
+      2298672949,
+      2730970090,
+      1325821705,
+      2261101950,
+      4248880160,
+      2834751695,
+      3211490020,
+      2462493585,
+      668491526,
+      2709955663,
+      3907001466,
+      593449942,
+      3075477363,
+      174383855,
+      3424972484,
+      2034191694,
+      2104677080,
+      2796697795,
+      555850620,
+      245543891,
+      3725911972,
+      4285481118,
+      3390492555,
+      1302189683,
+      2281235013,
+      3812404979,
+      3533269107,
+      1762805744,
+      1205732748,
+      1900819185,
+      2042017722,
+      3081088426,
+      1189552337,
+      4200500693,
+      1906422430,
+      3655530046,
+      4198247426,
+      2989019230,
+      989556107,
+      3204404265,
+      448176581,
+      1072373122,
+      2453850547,
+      3230093336,
+      1583051260,
+      2724793650,
+      889526295,
+      1699876501,
+      412911040,
+      2276320502,
+      2281719368,
+      3028518243,
+      2048065531,
+      3134130905,
+      2725476769,
+      1665608718,
+      2839243630,
+      3257027811,
+      1502335679,
+      3895045747,
+      2347776047,
+      3668580496,
+      3960116996,
+      1146163209,
+      566957916,
+      4176703567,
+      307256993,
+      3137385718,
+      3399405792,
+      223071899,
+      2466406262,
+      4200245942,
+      1079925888,
+      3876669147,
+      3982634891,
+      2633245544,
+      3991142371,
+      2421180803,
+      4268463674,
+      2121483777,
+      3329685170,
+      2642067813,
+      4127051134,
+      229300746,
+      1576763102,
+      2586177573,
+      3302027000,
+      60665116,
+      4079557032,
+      528813152,
+      3294211185,
+      82021205,
+      404327242,
+      2263958936,
+      186465221,
+      3434236146,
+      2296297833,
+      1820719631,
+      950729084,
+      1268409870,
+      3941226650,
+      2378865173,
+      4042436275,
+      814382761,
+      783799007,
+      4043911343,
+      3334521861,
+      125842341,
+      3975592019,
+      2372265089,
+      1624376880,
+      709657732,
+      1826985611,
+      2123499048,
+      71576238,
+      2186542653,
+      2013278979,
+      1229061393,
+      1317545065,
+      2577580005,
+      551696414,
+      23430459,
+      2287289475,
+      4263724170,
+      1216985378,
+      1395867134,
+      535722046,
+      2394102999,
+      4183990058,
+      1840002548,
+      3140990195,
+      2682454644,
+      2968410608,
+      2498726000,
+      2436715984,
+      3815275712,
+      1508518767,
+      3287935641,
+      22827642,
+      4015294159,
+      2188281257,
+      2844737250,
+      1604576888,
+      1603949909,
+      186211612,
+      1913554724,
+      3224445361,
+      3929120533,
+      3334976527,
+      3959999548,
+      2162250600,
+      1593062102,
+      423041483,
+      477698181,
+      1151536560,
+      3323706360,
+      3596406622,
+      3677994325,
+      2988109864,
+      2865756836,
+      2776854404,
+      864597467,
+      1224032494,
+      718451299,
+      378144989,
+      2006889769,
+      3097640607,
+      3769409854,
+      3885588562,
+      1765815387,
+      1524535223,
+      732850253,
+      1830273775,
+      1210639690,
+      343605712,
+      559628692,
+      3777403753,
+      2790983057,
+      899611037,
+      3730087192,
+      1985500766,
+      1406410638,
+      2219866298,
+      1235562571,
+      466325283,
+      1173569355,
+      1623417105,
+      753435776,
+      3834231944,
+      3698605809,
+      780534247,
+      4010173341,
+      110705802,
+      3057089801,
+      1100012623,
+      649559846,
+      3099551483,
+      286478895,
+      2425652083,
+      2360017983,
+      1025978698,
+      2824258050,
+      114593940,
+      2863932162,
+      2696824694,
+      2497538557,
+      33206372,
+      3449154918,
+      3494632677,
+      657145237,
+      568682210,
+      1989028767,
+      1643705632,
+      3094272740,
+      3030510515,
+      4225533289,
+      3822060712,
+      2923901096,
+      1220286331,
+      99666056,
+      4284254968,
+      3617659141,
+      1992835282,
+      961418681,
+      3322204801,
+      2610059827,
+      3803945154,
+      503238294,
+      3465848363,
+      1504680465,
+      4002001321,
+      2237447020,
+      3109084226,
+      3167207518,
+      523967779,
+      2949404467,
+      1145372140,
+      227253735,
+      565532320,
+      3734735128,
+      1454405088,
+      2489017076,
+      2374048906,
+      1824383104,
+      2615311751,
+      2425373031,
+      1298696507,
+      833253924,
+      3535955458,
+      3368384355,
+      1232136755,
+      1520551732,
+      3455603907,
+      1501321015,
+      2383699273,
+      76206338,
+      893559175,
+      3748655029,
+      2650141924,
+      2125086589,
+      768409862,
+      1204328455,
+      2950108304,
+      2417558264,
+      1302330041,
+      1120883258,
+      3343718732,
+      4135400521,
+      711355297,
+      710515955,
+      3096121604,
+      223194275,
+      4279445392,
+      3965600572,
+      129
+    ],
+    null
+  ],
+  "config": {
+    "population_size": 10,
+    "generations": 3,
+    "initial_samples": 20,
+    "max_evaluations": 50,
+    "alpha": 0.5,
+    "omega": 0.7,
+    "c_personal": 1.4,
+    "c_global": 1.8,
+    "c_explore": 0.25,
+    "seed": 2024,
+    "checkpoint_every": 1,
+    "output_dir": "D:\\spso-behavior-semantic-computing\\eoh\\examples\\tsp_gls_numba\\results_spso\\run_001",
+    "use_llm": true,
+    "resume_from": null,
+    "num_samplers": 16,
+    "num_evaluators": 16,
+    "cache_evaluations": false
+  }
+}

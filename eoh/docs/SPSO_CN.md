@@ -62,8 +62,41 @@ DEEPSEEK_MODEL = "deepseek-chat"
 python runSPSO.py
 ```
 
-LLM 只能从每个槽的 cut 集中选择模块并返回有限参数。响应不是可执行代码；代码由任务编译器确定性生成。`runSPSO.py` 中的 `NUM_SAMPLERS` 控制并行采样/LLM 请求数，`NUM_EVALUATORS` 控制并行 GLS 评估数；两者默认均为 16。恢复实验时，将 `RESUME_FROM` 设置为对应的 `checkpoints/generation_XXXX.json`。
+LLM 只能从每个槽的 cut 集中选择模块并返回有限参数。响应不是可执行代码；代码由任务编译器确定性生成。`runSPSO.py` 中的 `NUM_SAMPLERS` 控制并行采样/LLM 请求数，`NUM_EVALUATORS` 控制并行 GLS 评估数；两者默认均为 16。为了与 EoH 做严格时间对比，`CACHE_EVALUATIONS = False` 会让每个样本都执行一次独立 GLS 评估；如果只关心搜索速度，可以改为 `True` 复用重复候选的评分。恢复实验时，将 `RESUME_FROM` 设置为对应的 `checkpoints/generation_XXXX.json`。
 
 运行时采用两层流水线：采样线程负责 cut 集整理、LLM 选择和候选编译；评估线程池负责带硬超时的 GLS 评分。每一代开始时先冻结当前粒子、pbest 和 gbest 快照，因此并行不会改变一代内部的 PSO 语义；代内候选完成后统一更新粒子状态。
 
 原来的 `runEoH.py` 仍然是完整程序生成基线，S-PSO 通过独立的 `runSPSO.py` 运行，便于按相同任务评测器做比较。
+
+每次 S-PSO 运行还会生成：
+
+```text
+results_spso/run_001/run_log.txt
+results_spso/run_001/generation_metrics.jsonl
+```
+
+`run_log.txt` 会像 EoH 一样打印每一代的每个粒子适应度、当代最佳值、`pbest` 和相对最佳值的差值百分比。`generation_metrics.jsonl` 保存同样内容的结构化记录，适合后处理和绘制收敛曲线。当最佳适应度接近 0 时，相对百分比在数学上没有稳定分母，日志会显示 `N/A`，此时应同时参考绝对适应度差值。
+
+## 实际路径与评分核验
+
+适应度是各训练实例 `(找到的最好长度 / 数据集参考长度 - 1) * 100` 的算术平均，
+不是三个路径长度的平均。长度单位沿用训练数据的距离矩阵。
+
+训练入口使用 `TSPGLSWithDetails`，在同一次评分中记录每个实例的路径，
+逐代打印 `length`、`reference`、`gap` 和 `valid`。样本、最佳样本和检查点
+同时保存这些明细；缓存复用时连同评分对应的路径一起复用。
+`PRINT_BEST_ROUTES = True` 会在结束时把最佳启发式的全部训练路径打印到终端和日志。
+节点从 0 编号；100 城市的 `tour_nodes` 有 100 项，`closed_tour` 有 101 项，末尾重复起点。
+`edge_lengths` 包含闭合回路上每一条边的原始距离。
+
+旧结果没有记录路径，可运行 `inspectBestRoutes.py`：在脚本顶部配置 `BEST_FILE`
+和评估参数，无需 API Key。该脚本重新评分并打印路径，生成独立的
+`samples/best_routes_<时间戳>.json`，不覆盖历史最佳样本。报告明确区分
+历史分数 `stored_objective` 与重评估分数 `objective`。
+
+核验要求路径只访问每个节点一次、闭合且前驱后继一致，并用原始距离逐边
+重新求和（`math.fsum`），与搜索记录的最好长度比较；失败时拒绝该评分。
+旧 GLS 的 `best_route` 与活动路径共享可变数组，直接读取退出时的路径可能
+不对应历史最佳分数。因此新增 `capture_best_route` 仅在更新历史最佳值时
+另存路径副本；原有局部搜索与重启轨迹保持不变。该记录机制不修复原有
+重启路径的共享引用问题，两种方法的历史结果仍需按原协议解释。

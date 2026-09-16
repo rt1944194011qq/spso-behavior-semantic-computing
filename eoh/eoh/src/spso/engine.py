@@ -15,6 +15,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -45,6 +46,7 @@ class SPSOConfig:
     resume_from: str | None = None
     num_samplers: int = 16
     num_evaluators: int = 16
+    cache_evaluations: bool = True
 
     def __post_init__(self):
         if self.population_size < 1 or self.generations < 0:
@@ -69,6 +71,7 @@ class EvaluatedCandidate:
     strategy: str
     sample_id: int
     cached: bool = False
+    details: dict[str, Any] | None = None
 
     def to_dict(self, slot_order: tuple[str, ...]) -> dict[str, Any]:
         return {
@@ -81,6 +84,7 @@ class EvaluatedCandidate:
             "source": self.source,
             "strategy": self.strategy,
             "cached": self.cached,
+            "details": self.details,
         }
 
 
@@ -91,6 +95,7 @@ class _Particle:
     pbest_position: ParticlePosition | None = None
     pbest_objective: float | None = None
     current_objective: float | None = None
+    current_details: dict[str, Any] | None = None
 
 
 def _tupleize(value):
@@ -104,7 +109,7 @@ def _tupleize(value):
 class SPSOEngine:
     """Typed semantic PSO with pluggable compilation and evaluation.
 
-    ``evaluate_code`` must return a finite scalar objective or ``None``.  The
+    ``evaluate_code`` returns a scalar, None, or {objective, details}. The
     compiler is responsible for producing a complete function that satisfies
     the task adapter's public input/output contract.
     """
@@ -113,7 +118,7 @@ class SPSOEngine:
         self,
         registry: ModuleRegistry,
         compiler: HeuristicCompiler,
-        evaluate_code: Callable[[str], float | None],
+        evaluate_code: Callable[[str], float | dict[str, Any] | None],
         config: SPSOConfig | None = None,
         selector: SemanticSelector | None = None,
     ):
@@ -126,6 +131,8 @@ class SPSOEngine:
         self.output_dir = Path(self.config.output_dir)
         self.sample_dir = self.output_dir / "samples"
         self.checkpoint_dir = self.output_dir / "checkpoints"
+        self.run_log_path = self.output_dir / "run_log.txt"
+        self.generation_metrics_path = self.output_dir / "generation_metrics.jsonl"
         self.sample_dir.mkdir(parents=True, exist_ok=True)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         self.sample_count = 0
@@ -138,6 +145,74 @@ class SPSOEngine:
         self._inflight: dict[str, threading.Event] = {}
         self._sampler_executor: ThreadPoolExecutor | None = None
         self._eval_executor: ThreadPoolExecutor | None = None
+
+    def _log(self, message: str):
+        """Write one timestamped line to both the terminal and run_log.txt."""
+        line = f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {message}"
+        with self._state_lock:
+            print(line, flush=True)
+            with self.run_log_path.open("a", encoding="utf-8") as handle:
+                handle.write(line + "\n")
+
+    @staticmethod
+    def _format_objective(value: float | None) -> str:
+        return "N/A" if value is None else f"{value:.8g}"
+
+    @staticmethod
+    def _gap_percent(value: float | None, best: float | None) -> float | None:
+        """Relative gap for a minimisation objective.
+
+        A small denominator is common when a task reaches numerical zero. In
+        that case equal values are reported as 0%, while a non-equal value is
+        left as unavailable instead of displaying an unstable percentage.
+        """
+        if value is None or best is None:
+            return None
+        if abs(best) < 1e-12:
+            return 0.0 if abs(value - best) < 1e-12 else None
+        return max(0.0, 100.0 * (value - best) / abs(best))
+
+    def _log_generation(self, generation: int, particles: list[_Particle]):
+        """Log every particle's fitness and gap to the current global best."""
+        best = self.gbest_objective
+        self._log(
+            f"--- Generation {generation}/{self.config.generations}  "
+            f"pop={len(particles)}  best={self._format_objective(best)}"
+        )
+        rows = []
+        for index, particle in enumerate(particles, start=1):
+            fitness = particle.current_objective
+            gap = self._gap_percent(fitness, best)
+            absolute_gap = None if fitness is None or best is None else fitness - best
+            gap_text = "N/A(best≈0)" if gap is None else f"{gap:.6f}%"
+            self._log(
+                f"  particle={index:02d}  fitness={self._format_objective(fitness):<14}  "
+                f"gap_to_best={gap_text:<14}  "
+                f"delta={self._format_objective(absolute_gap):<12}  "
+                f"pbest={self._format_objective(particle.pbest_objective)}"
+            )
+            rows.append({
+                "particle": index,
+                "fitness": fitness,
+                "pbest": particle.pbest_objective,
+                "absolute_gap_to_best": absolute_gap,
+                "gap_to_best_percent": gap,
+                "position": particle.position.to_dict(),
+                "position_text": particle.position.algorithm_text(self.registry.slot_ids),
+                "details": particle.current_details,
+            })
+            for item in (particle.current_details or {}).get("instances", []):
+                self._log(
+                    f"    instance={item['instance']} length={item['tour_length']:.12g} "
+                    f"reference={item['reference_length']:.12g} "
+                    f"gap={item['gap_percent']:.8g}% valid={item['valid_tour']}"
+                )
+        with self.generation_metrics_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps({
+                "generation": generation,
+                "best_objective": best,
+                "particles": rows,
+            }, ensure_ascii=False) + "\n")
 
     def _key(self, position: ParticlePosition) -> str:
         return json.dumps(position.to_dict(), sort_keys=True, separators=(",", ":"))
@@ -180,7 +255,7 @@ class SPSOEngine:
                 mapping[slot.slot_id] = ModuleChoice.create(slot.slot_id, current.module, params)
         return self.registry.validate_position(ParticlePosition(tuple(mapping.values())))
 
-    def _run_evaluation(self, code: str) -> float | None:
+    def _run_evaluation(self, code: str) -> float | dict[str, Any] | None:
         """Run one independent evaluation in the shared evaluation pool."""
         if self._eval_executor is None:
             return self.evaluate_code(code)
@@ -197,16 +272,17 @@ class SPSOEngine:
         key = self._key(position)
         code, algorithm = self.compiler.compile(position)
 
+        use_cache = self.config.cache_evaluations
         with self._state_lock:
             self.sample_count += 1
             sample_id = self.sample_count
-            cached = self.cache.get(key)
+            cached = self.cache.get(key) if use_cache else None
             budget_exhausted = False
             if cached is not None:
                 owner = False
                 wait_event = None
             else:
-                wait_event = self._inflight.get(key)
+                wait_event = self._inflight.get(key) if use_cache else None
                 owner = wait_event is None
                 if owner:
                     if (
@@ -215,14 +291,16 @@ class SPSOEngine:
                     ):
                         budget_exhausted = True
                     else:
-                        wait_event = threading.Event()
-                        self._inflight[key] = wait_event
+                        wait_event = threading.Event() if use_cache else None
+                        if use_cache:
+                            self._inflight[key] = wait_event
                         self.evaluation_count += 1
 
         if cached is not None:
             candidate = EvaluatedCandidate(
                 position, cached["objective"], cached["code"], cached["algorithm"],
                 source, strategy, sample_id, True,
+                details=cached.get("details"),
             )
             self._record(candidate)
             return candidate
@@ -242,12 +320,18 @@ class SPSOEngine:
             candidate = EvaluatedCandidate(
                 position, cached["objective"], cached["code"], cached["algorithm"],
                 source, strategy, sample_id, True,
+                details=cached.get("details"),
             )
             self._record(candidate)
             return candidate
 
+        details = None
         try:
-            objective = self._run_evaluation(code)
+            result = self._run_evaluation(code)
+            if isinstance(result, dict):
+                objective, details = result.get("objective"), result.get("details")
+            else:
+                objective = result
             objective = float(objective) if objective is not None else None
         except Exception as exc:
             logger.warning("candidate evaluation failed: %s", exc)
@@ -256,11 +340,13 @@ class SPSOEngine:
             objective = None
 
         with self._state_lock:
-            self.cache[key] = {"objective": objective, "code": code, "algorithm": algorithm}
-            wait_event.set()
-            self._inflight.pop(key, None)
+            if use_cache:
+                self.cache[key] = {"objective": objective, "code": code, "algorithm": algorithm, "details": details}
+                wait_event.set()
+                self._inflight.pop(key, None)
         candidate = EvaluatedCandidate(
             position, objective, code, algorithm, source, strategy, sample_id, False,
+            details=details,
         )
         self._record(candidate)
         return candidate
@@ -305,6 +391,7 @@ class SPSOEngine:
                     candidate.position,
                     candidate.objective,
                     candidate.objective,
+                    current_details=candidate.details,
                 )
             )
         return particles
@@ -346,6 +433,7 @@ class SPSOEngine:
                     "pbest_position": particle.pbest_position.to_dict() if particle.pbest_position else None,
                     "pbest_objective": particle.pbest_objective,
                     "current_objective": particle.current_objective,
+                    "current_details": particle.current_details,
                 }
                 for particle in particles
             ],
@@ -371,6 +459,7 @@ class SPSOEngine:
                     self.registry.validate_position(ParticlePosition.from_dict(pbest)) if pbest else None,
                     raw.get("pbest_objective"),
                     raw.get("current_objective"),
+                    current_details=raw.get("current_details"),
                 )
             )
         self.sample_count = int(payload.get("sample_count", 0))
@@ -388,6 +477,24 @@ class SPSOEngine:
 
     def run(self) -> dict[str, Any]:
         started = time.time()
+        # Start a fresh human-readable log and structured generation report for
+        # this run. A resumed run still gets a new header in the same output
+        # directory, just like the EoH runner recreates its run log.
+        self.run_log_path.write_text("", encoding="utf-8")
+        self.generation_metrics_path.write_text("", encoding="utf-8")
+        self._log("=" * 64)
+        self._log("  S-PSO semantic module evolution")
+        self._log(
+            f"  generations={self.config.generations}  pop={self.config.population_size}  "
+            f"initial={self.config.initial_samples or 2 * self.config.population_size}  "
+            f"max_evaluations={self.config.max_evaluations or 'None'}"
+        )
+        self._log(
+            f"  Pipeline: samplers={self.config.num_samplers}  "
+            f"evaluators={self.config.num_evaluators} (async)  "
+            f"cache={'on' if self.config.cache_evaluations else 'off'}"
+        )
+        self._log("=" * 64)
         self._sampler_executor = ThreadPoolExecutor(
             max_workers=self.config.num_samplers,
             thread_name_prefix="spso-sampler",
@@ -404,6 +511,9 @@ class SPSOEngine:
                 self._update_global(particles)
                 start_generation = 0
                 self._checkpoint(particles, 0)
+                self._log_generation(0, particles)
+            if self.config.resume_from:
+                self._log_generation(start_generation, particles)
             budget = self.config.max_evaluations
             for generation in range(start_generation + 1, self.config.generations + 1):
                 if budget is not None and self.evaluation_count >= budget:
@@ -464,10 +574,12 @@ class SPSOEngine:
                     if candidate.objective is not None:
                         particle.position = candidate.position
                         particle.current_objective = candidate.objective
+                        particle.current_details = candidate.details
                         if particle.pbest_objective is None or candidate.objective < particle.pbest_objective:
                             particle.pbest_position = candidate.position
                             particle.pbest_objective = candidate.objective
                 self._update_global(particles)
+                self._log_generation(generation, particles)
                 if generation % max(1, self.config.checkpoint_every) == 0:
                     self._checkpoint(particles, generation)
         finally:
@@ -488,7 +600,15 @@ class SPSOEngine:
             "independent_evaluations": self.evaluation_count,
             "cache_entries": len(self.cache),
             "elapsed_seconds": elapsed,
+            "run_log": str(self.run_log_path),
+            "generation_metrics": str(self.generation_metrics_path),
         }
         with (self.output_dir / "summary.json").open("w", encoding="utf-8") as handle:
             json.dump(summary, handle, ensure_ascii=False, indent=2)
+        self._log(
+            f"Evolution finished.  best={self._format_objective(self.gbest_objective)}  "
+            f"samples={self.sample_count}  independent_evaluations={self.evaluation_count}  "
+            f"time={elapsed / 60:.1f}m"
+        )
+        self._log("=" * 64)
         return summary
