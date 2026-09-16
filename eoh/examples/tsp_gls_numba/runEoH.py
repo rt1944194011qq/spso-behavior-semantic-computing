@@ -9,13 +9,13 @@ from prob import TSPGLS
 
 if __name__ == "__main__":
     llm = LLMConfig(
-        api_endpoint='xxx',
-        api_key='xxx',
-        model='xxx',
+        api_endpoint='api.deepseek.com',
+        api_key='在这里填写 DeepSeek API Key',
+        model='deepseek-flash',
         timeout=150,
     )
 
-    task = TSPGLS(n_inst_eva=64, time_limit=60.0, ite_max=1000,
+    task = TSPGLS(n_inst_eva=3, time_limit=60.0, ite_max=1000,
                   perturbation_moves=1, timeout=3600)
 
     eoh = EoH(
@@ -24,7 +24,7 @@ if __name__ == "__main__":
         num_samplers=16,
         num_evaluators=16,
         pop_size=10,
-        n_pop=100,
+        n_pop=3,
         operators=['e1', 'e2', 'm1', 'm2'],
         output_dir=os.path.dirname(__file__),
     )
