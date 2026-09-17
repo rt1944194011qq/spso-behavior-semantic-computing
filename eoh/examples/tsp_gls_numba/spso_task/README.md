@@ -24,6 +24,20 @@ classic GLS penalty is represented by:
 
 `tour_edges | edge_length | inverse_count | identity | symmetric_add_all(lambda=1.0)`
 
+The search state follows the set-based PSO representation from the project
+paper. Each TSP slot has a crisp module set with capacity `K_s=3`, while its
+velocity stores a possibility in `[0, 1]` for every registered module. The
+update uses the slot-wise differences `PBest-X` and `GBest-X`, possibility-set
+addition (maximum for duplicate modules), and an absolute alpha-cut
+`{module | possibility >= alpha}`. `ALPHA=None` samples one alpha per particle
+and generation; a numeric value such as `0.5` is a fixed-alpha ablation.
+
+The alpha-cut is expanded into the next set by the order `cut -> current set
+-> random remaining modules`, up to `K_s`. Only then does the semantic selector
+choose one module and its parameters per slot. This decoded
+`ParticlePosition` is compiled into the original three-argument GLS function,
+so the evaluator and downstream `heuristic.py` workflow remain unchanged.
+
 The runner uses an EoH-style two-level pipeline. `NUM_SAMPLERS` controls the
 threads that perform cut construction, LLM selection and compilation;
 `NUM_EVALUATORS` controls the shared pool of isolated GLS evaluations. A

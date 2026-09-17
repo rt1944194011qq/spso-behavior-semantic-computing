@@ -1,160 +1,43 @@
-"""Deterministic compiler from a TSP GLS module sequence to Python source."""
+"""Deterministic compiler for the typed TSP GLS recipe language.
+
+The same role renderers are used by ``compile`` and ``module_code``. The
+second method therefore exposes executable compiler fragments rather than an
+independent collection of illustrative snippets.
+"""
 
 from __future__ import annotations
 
+import textwrap
+from typing import Any, Mapping
+
 from spso.models import ModuleChoice, ParticlePosition
-from spso.registry import ModuleRegistry
+from spso.registry import ModuleRegistry, ModuleSpec
 
 
 class TSPGLSCompiler:
-    """Compile symbolic modules into the exact EoH public function contract."""
-
     def __init__(self, registry: ModuleRegistry):
         self.registry = registry
 
     @staticmethod
-    def _number(value) -> str:
-        return repr(float(value)) if isinstance(value, float) else repr(value)
+    def _number(value: Any) -> str:
+        return repr(float(value))
 
-    def module_code(self, slot_id: str, module_id: str, params=None) -> str:
-        """Return the exact internal snippet represented by one module.
+    @staticmethod
+    def _kind(spec: ModuleSpec, fallback: str) -> str:
+        return str(spec.recipe.get("kind", fallback))
 
-        These snippets are explanatory compiler fragments sent to the LLM. They
-        use the adapter's internal context variables (``base``, ``tour``,
-        ``used``, ``pairs``, ``scored`` and ``aug``), while the compiler still
-        emits the final complete function deterministically.
-        """
-        choice = self.registry.validate_choice(
-            ModuleChoice.create(slot_id, module_id, params or {})
-        )
-        values = choice.params_dict()
-        e_k = int(values.get("k", 3))
-        h_gamma = self._number(values.get("gamma", 0.5))
-        h_tau = self._number(values.get("tau", 3.0))
-        h_strength = self._number(values.get("strength", 0.5))
-        t_tau = self._number(values.get("tau", 1.0))
-        t_cap = self._number(values.get("cap", 2.0))
-        w_k = int(values.get("k", 5))
-        w_fraction = self._number(values.get("fraction", 0.5))
-        w_exponent = self._number(values.get("exponent", 0.5))
-        w_lambda = self._number(values.get("lambda", 1.0))
-        if slot_id == "E":
-            snippets = {
-                "tour_edges": """pairs = []
-for i in range(n):
-    u = int(tour[i]); v = int(tour[(i + 1) % n])
-    if u != v: pairs.append((u, v))""",
-                "tour_edges_plus_neighbors": """pairs = []
-for i in range(n):
-    u = int(tour[i]); v = int(tour[(i + 1) % n])
-    if u != v: pairs.append((u, v))
-    nearest = int(np.argsort(base[u])[1]) if n > 1 else u
-    if u != nearest: pairs.append((u, nearest))""",
-                "tour_edges_k_neighbors": f"""pairs = []
-for i in range(n):
-    u = int(tour[i]); v = int(tour[(i + 1) % n])
-    if u != v: pairs.append((u, v))
-    nearest_order = np.argsort(base[u])
-    for rank in range(1, min({e_k + 1}, n)):
-        pairs.append((u, int(nearest_order[rank])))""",
-                "two_opt_cross_edges": """pairs = []
-for i in range(n):
-    a = int(tour[i]); b = int(tour[(i + 1) % n])
-    for j in range(i + 2, n):
-        if i == 0 and j == n - 1: continue
-        c = int(tour[j]); d = int(tour[(j + 1) % n])
-        pairs.extend([(a, c), (b, d)])""",
-                "high_usage_edges": f"""pairs = []
-rows, cols = np.triu_indices(n, 1)
- for index in np.argsort(used[rows, cols])[::-1][:{e_k}]:
-    if used[rows[index], cols[index]] > 0: pairs.append((int(rows[index]), int(cols[index])))""",
-                "tour_and_high_usage": f"""pairs = []
-for i in range(n): pairs.append((int(tour[i]), int(tour[(i + 1) % n])))
-rows, cols = np.triu_indices(n, 1)
- for index in np.argsort(used[rows, cols])[::-1][:{e_k}]:
-    if used[rows[index], cols[index]] > 0: pairs.append((int(rows[index]), int(cols[index])))""",
-            }
-            return snippets[module_id]
-        if slot_id == "F":
-            return {
-                "edge_length": "raw_feature = base[u, v]",
-                "relative_length": "raw_feature = base[u, v] / scale",
-                "tour_deviation": "raw_feature = base[u, v] / tour_scale",
-                "inverse_length": "raw_feature = scale / max(base[u, v], 1e-12)",
-                "excess_over_mean": "raw_feature = max(base[u, v] / scale - 1.0, 0.0)",
-                "squared_relative_length": "raw_feature = (base[u, v] / scale) ** 2",
-            }[module_id]
-        if slot_id == "H":
-            return {
-                "none": "history_factor = 1.0",
-                "inverse_count": "history_factor = 1.0 / (1.0 + used[u, v])",
-                "inverse_sqrt_count": "history_factor = 1.0 / np.sqrt(1.0 + used[u, v])",
-                "inverse_log_count": "history_factor = 1.0 / np.log2(2.0 + used[u, v])",
-                "power_decay": f"history_factor = (1.0 + used[u, v]) ** (-{h_gamma})",
-                "exponential_decay": f"history_factor = np.exp(-used[u, v] / {h_tau})",
-                "usage_boost": f"history_factor = 1.0 + {h_strength} * used[u, v] / (mean_used + 1e-12)",
-            }[module_id]
-        if slot_id == "T":
-            return {
-                "identity": "score = raw_score",
-                "sqrt": "score = np.sqrt(max(raw_score, 0.0))",
-                "log1p": "score = np.log1p(max(raw_score, 0.0))",
-                "square": "score = raw_score * raw_score",
-                "tanh_scale": f"score = np.tanh(max(raw_score, 0.0) / {t_tau})",
-                "clip": f"score = min(max(raw_score, 0.0), {t_cap})",
-            }[module_id]
-        if slot_id == "W":
-            lam = w_lambda
-            return {
-                "symmetric_add_all": f"""for score, u, v in scored:
-    delta = {lam} * score
-    aug[u, v] += delta; aug[v, u] += delta""",
-                "symmetric_add_topk": f"""scored.sort(key=lambda item: item[0], reverse=True)
-for score, u, v in scored[:{w_k}]:
-    delta = {lam} * score
-    aug[u, v] += delta; aug[v, u] += delta""",
-                "symmetric_add_normalized": f"""max_score = max((item[0] for item in scored), default=0.0)
-for score, u, v in scored:
-    delta = {lam} * score / max(max_score, 1e-12)
-    aug[u, v] += delta; aug[v, u] += delta""",
-                "symmetric_add_quantile": f"""threshold = np.quantile([item[0] for item in scored], 1.0 - {w_fraction})
-for score, u, v in scored:
-    if score >= threshold:
-        delta = {lam} * score
-        aug[u, v] += delta; aug[v, u] += delta""",
-                "symmetric_add_rank_weighted": f"""scored.sort(key=lambda item: item[0], reverse=True)
-for rank, (score, u, v) in enumerate(scored):
-    delta = {lam} * score / ((rank + 1.0) ** {w_exponent})
-    aug[u, v] += delta; aug[v, u] += delta""",
-                "symmetric_add_usage_balanced": f"""for score, u, v in scored:
-    delta = {lam} * score / (1.0 + 0.5 * used[u, v])
-    aug[u, v] += delta; aug[v, u] += delta""",
-            }[module_id]
-        raise ValueError(f"unknown slot: {slot_id}")
-
-    def compile(self, position: ParticlePosition) -> tuple[str, str]:
-        position = self.registry.validate_position(position)
-        choices = position.as_mapping()
-        e = choices["E"]
-        f = choices["F"].module
-        h = choices["H"]
-        t = choices["T"]
-        w = choices["W"]
-        ep = e.params_dict()
-        hp = h.params_dict()
-        tp = t.params_dict()
-        wp = w.params_dict()
-
-        if e.module == "tour_edges":
-            edge_block = """    pairs = []
+    def _render_edge(self, spec: ModuleSpec, params: Mapping[str, Any]) -> str:
+        kind = self._kind(spec, spec.module_id)
+        if kind == "tour":
+            return """    pairs = []
     for i in range(n):
         u = int(tour[i])
         v = int(tour[(i + 1) % n])
         if u != v:
             pairs.append((u, v))
 """
-        elif e.module == "tour_edges_plus_neighbors":
-            edge_block = """    pairs = []
+        if kind == "tour_neighbors":
+            return """    pairs = []
     for i in range(n):
         u = int(tour[i])
         v = int(tour[(i + 1) % n])
@@ -164,9 +47,9 @@ for rank, (score, u, v) in enumerate(scored):
         if u != nearest:
             pairs.append((u, nearest))
 """
-        elif e.module == "tour_edges_k_neighbors":
-            k = int(ep["k"])
-            edge_block = f"""    pairs = []
+        if kind == "tour_k_neighbors":
+            k = int(params["k"])
+            return f"""    pairs = []
     for i in range(n):
         u = int(tour[i])
         v = int(tour[(i + 1) % n])
@@ -178,8 +61,8 @@ for rank, (score, u, v) in enumerate(scored):
             if u != neighbour:
                 pairs.append((u, neighbour))
 """
-        elif e.module == "two_opt_cross_edges":
-            edge_block = """    pairs = []
+        if kind == "two_opt_cross":
+            return """    pairs = []
     for i in range(n):
         a = int(tour[i])
         b = int(tour[(i + 1) % n])
@@ -191,18 +74,17 @@ for rank, (score, u, v) in enumerate(scored):
             pairs.append((a, c))
             pairs.append((b, d))
 """
-        elif e.module in {"high_usage_edges", "tour_and_high_usage"}:
-            k = int(ep["k"])
-            prefix = """    pairs = []
-"""
-            if e.module == "tour_and_high_usage":
+        if kind in {"usage_topk", "tour_usage_mix"}:
+            k = int(params["k"])
+            prefix = "    pairs = []\n"
+            if kind == "tour_usage_mix":
                 prefix += """    for i in range(n):
         u = int(tour[i])
         v = int(tour[(i + 1) % n])
         if u != v:
             pairs.append((u, v))
 """
-            edge_block = prefix + f"""    upper_rows, upper_cols = np.triu_indices(n, 1)
+            return prefix + f"""    upper_rows, upper_cols = np.triu_indices(n, 1)
     usage_order = np.argsort(used[upper_rows, upper_cols])[::-1]
     for index in usage_order[:{k}]:
         if used[upper_rows[index], upper_cols[index]] > 0.0:
@@ -211,115 +93,159 @@ for rank, (score, u, v) in enumerate(scored):
         for i in range(n):
             pairs.append((int(tour[i]), int(tour[(i + 1) % n])))
 """
-        else:  # registry validation makes this unreachable
-            raise ValueError(f"unsupported E module: {e.module}")
+        raise ValueError(f"unsupported E recipe: {kind}")
 
-        if f == "edge_length":
-            feature_expr = "base[u, v]"
-        elif f == "relative_length":
-            feature_expr = "base[u, v] / scale"
-        elif f == "tour_deviation":
-            feature_expr = "base[u, v] / tour_scale"
-        elif f == "inverse_length":
-            feature_expr = "scale / max(base[u, v], 1e-12)"
-        elif f == "excess_over_mean":
-            feature_expr = "max(base[u, v] / scale - 1.0, 0.0)"
-        elif f == "squared_relative_length":
-            feature_expr = "(base[u, v] / scale) ** 2"
-        else:
-            raise ValueError(f"unsupported F module: {f}")
+    def _render_feature(self, spec: ModuleSpec, params: Mapping[str, Any]) -> str:
+        kind = self._kind(spec, spec.module_id)
+        fixed = {
+            "distance": "base[u, v]",
+            "relative_distance": "base[u, v] / scale",
+            "tour_relative": "base[u, v] / tour_scale",
+            "inverse_distance": "scale / max(base[u, v], 1e-12)",
+            "excess": "max(base[u, v] / scale - 1.0, 0.0)",
+            "power_distance": "(base[u, v] / scale) ** 2",
+        }
+        if kind in fixed:
+            return fixed[kind]
+        if kind == "power_relative":
+            return f"(base[u, v] / scale) ** {self._number(params['exponent'])}"
+        if kind == "inverse_power":
+            return f"(scale / max(base[u, v], 1e-12)) ** {self._number(params['exponent'])}"
+        if kind == "offset_relative":
+            return f"max(base[u, v] / scale + {self._number(params['offset'])}, 0.0)"
+        if kind == "blend_relative":
+            weight = self._number(params["weight"])
+            return f"{weight} * (base[u, v] / scale) + (1.0 - {weight}) * (base[u, v] / tour_scale)"
+        if kind == "bounded_relative":
+            lower = self._number(params["lower"])
+            upper = self._number(params["upper"])
+            return f"min(max(base[u, v] / scale, {lower}), max({upper}, {lower}))"
+        raise ValueError(f"unsupported F recipe: {kind}")
 
-        if h.module == "none":
-            history_expr = "1.0"
-        elif h.module == "inverse_count":
-            history_expr = "1.0 / (1.0 + used[u, v])"
-        elif h.module == "inverse_sqrt_count":
-            history_expr = "1.0 / np.sqrt(1.0 + used[u, v])"
-        elif h.module == "inverse_log_count":
-            history_expr = "1.0 / np.log2(2.0 + used[u, v])"
-        elif h.module == "power_decay":
-            history_expr = f"(1.0 + used[u, v]) ** (-{self._number(hp['gamma'])})"
-        elif h.module == "exponential_decay":
-            history_expr = f"np.exp(-used[u, v] / {self._number(hp['tau'])})"
-        elif h.module == "usage_boost":
-            history_expr = f"1.0 + {self._number(hp['strength'])} * used[u, v] / (mean_used + 1e-12)"
-        else:
-            raise ValueError(f"unsupported H module: {h.module}")
+    def _render_history(self, spec: ModuleSpec, params: Mapping[str, Any]) -> str:
+        kind = self._kind(spec, spec.module_id)
+        if kind == "constant":
+            return "1.0"
+        if kind == "inverse_count":
+            return "1.0 / (1.0 + used[u, v])"
+        if kind == "inverse_sqrt":
+            return "1.0 / np.sqrt(1.0 + used[u, v])"
+        if kind == "inverse_log":
+            return "1.0 / np.log2(2.0 + used[u, v])"
+        if kind == "power_decay":
+            return f"(1.0 + used[u, v]) ** (-{self._number(params['gamma'])})"
+        if kind == "exponential_decay":
+            return f"np.exp(-used[u, v] / {self._number(params['tau'])})"
+        if kind == "usage_boost":
+            return f"1.0 + {self._number(params['strength'])} * used[u, v] / (mean_used + 1e-12)"
+        raise ValueError(f"unsupported H recipe: {kind}")
 
-        if t.module == "identity":
-            transform_expr = "raw_score"
-        elif t.module == "sqrt":
-            transform_expr = "np.sqrt(max(raw_score, 0.0))"
-        elif t.module == "log1p":
-            transform_expr = "np.log1p(max(raw_score, 0.0))"
-        elif t.module == "square":
-            transform_expr = "raw_score * raw_score"
-        elif t.module == "tanh_scale":
-            transform_expr = f"np.tanh(max(raw_score, 0.0) / {self._number(tp['tau'])})"
-        elif t.module == "clip":
-            transform_expr = f"min(max(raw_score, 0.0), {self._number(tp['cap'])})"
-        else:
-            raise ValueError(f"unsupported T module: {t.module}")
+    def _render_transform(self, spec: ModuleSpec, params: Mapping[str, Any]) -> str:
+        kind = self._kind(spec, spec.module_id)
+        if kind == "identity":
+            return "raw_score"
+        if kind == "sqrt":
+            return "np.sqrt(max(raw_score, 0.0))"
+        if kind == "log1p":
+            return "np.log1p(max(raw_score, 0.0))"
+        if kind == "square":
+            return "raw_score * raw_score"
+        if kind == "tanh":
+            return f"np.tanh(max(raw_score, 0.0) / {self._number(params['tau'])})"
+        if kind == "clip":
+            return f"min(max(raw_score, 0.0), {self._number(params['cap'])})"
+        raise ValueError(f"unsupported T recipe: {kind}")
 
-        lambda_value = self._number(wp.get("lambda", 1.0))
-        if w.module == "symmetric_add_all":
-            write_block = f"""    for score, u, v in scored:
-        delta = {lambda_value} * score
+    def _render_write(self, spec: ModuleSpec, params: Mapping[str, Any]) -> str:
+        kind = self._kind(spec, spec.module_id)
+        lam = self._number(params.get("lambda", 1.0))
+        if kind == "add_all":
+            return f"""    for score, u, v in scored:
+        delta = {lam} * score
         aug[u, v] += delta
         aug[v, u] += delta
 """
-        elif w.module == "symmetric_add_topk":
-            k_value = int(wp["k"])
-            write_block = f"""    scored.sort(key=lambda item: item[0], reverse=True)
-    for score, u, v in scored[:{k_value}]:
-        delta = {lambda_value} * score
+        if kind == "add_topk":
+            return f"""    scored.sort(key=lambda item: item[0], reverse=True)
+    for score, u, v in scored[:{int(params['k'])}]:
+        delta = {lam} * score
         aug[u, v] += delta
         aug[v, u] += delta
 """
-        elif w.module == "symmetric_add_normalized":
-            write_block = f"""    max_score = max((item[0] for item in scored), default=0.0)
+        if kind == "add_normalized":
+            return f"""    max_score = max((item[0] for item in scored), default=0.0)
     if max_score > 0.0:
         for score, u, v in scored:
-            delta = {lambda_value} * score / max_score
+            delta = {lam} * score / max_score
             aug[u, v] += delta
             aug[v, u] += delta
 """
-        elif w.module == "symmetric_add_quantile":
-            fraction = self._number(wp["fraction"])
-            write_block = f"""    if scored:
+        if kind == "add_quantile":
+            fraction = self._number(params["fraction"])
+            return f"""    if scored:
         threshold = float(np.quantile([item[0] for item in scored], 1.0 - {fraction}))
         for score, u, v in scored:
             if score >= threshold:
-                delta = {lambda_value} * score
+                delta = {lam} * score
                 aug[u, v] += delta
                 aug[v, u] += delta
 """
-        elif w.module == "symmetric_add_rank_weighted":
-            exponent = self._number(wp["exponent"])
-            write_block = f"""    scored.sort(key=lambda item: item[0], reverse=True)
+        if kind == "rank_weighted":
+            exponent = self._number(params["exponent"])
+            return f"""    scored.sort(key=lambda item: item[0], reverse=True)
     for rank, (score, u, v) in enumerate(scored):
-        delta = {lambda_value} * score / ((rank + 1.0) ** {exponent})
+        delta = {lam} * score / ((rank + 1.0) ** {exponent})
         aug[u, v] += delta
         aug[v, u] += delta
 """
-        elif w.module == "symmetric_add_usage_balanced":
-            write_block = f"""    for score, u, v in scored:
-        delta = {lambda_value} * score / (1.0 + 0.5 * used[u, v])
+        if kind == "usage_balanced":
+            return f"""    for score, u, v in scored:
+        delta = {lam} * score / (1.0 + 0.5 * used[u, v])
         aug[u, v] += delta
         aug[v, u] += delta
 """
-        else:
-            raise ValueError(f"unsupported W module: {w.module}")
+        raise ValueError(f"unsupported W recipe: {kind}")
 
+    def _normalized_choice(self, slot_id: str, module_id: str, params=None) -> ModuleChoice:
+        return self.registry.validate_choice(ModuleChoice.create(slot_id, module_id, params))
+
+    def module_code(self, slot_id: str, module_id: str, params=None) -> str:
+        """Return the exact typed fragment inserted by :meth:`compile`."""
+        choice = self._normalized_choice(slot_id, module_id, params)
+        spec = self.registry.module(slot_id, module_id)
+        values = choice.params_dict()
+        if slot_id == "E":
+            fragment = self._render_edge(spec, values)
+        elif slot_id == "F":
+            fragment = f"raw_feature = {self._render_feature(spec, values)}"
+        elif slot_id == "H":
+            fragment = f"history_factor = {self._render_history(spec, values)}"
+        elif slot_id == "T":
+            fragment = f"score = {self._render_transform(spec, values)}"
+        elif slot_id == "W":
+            fragment = self._render_write(spec, values)
+        else:
+            raise ValueError(f"unknown slot: {slot_id}")
+        return f"# slot {slot_id} / module {module_id}\n{textwrap.dedent(fragment).rstrip()}\n"
+
+    def compile(self, position: ParticlePosition) -> tuple[str, str]:
+        position = self.registry.validate_position(position)
+        choices = position.as_mapping()
+        e, f, h, t, w = (choices[slot] for slot in ("E", "F", "H", "T", "W"))
+        e_spec = self.registry.module("E", e.module)
+        f_spec = self.registry.module("F", f.module)
+        h_spec = self.registry.module("H", h.module)
+        t_spec = self.registry.module("T", t.module)
+        w_spec = self.registry.module("W", w.module)
+        edge_block = self._render_edge(e_spec, e.params_dict())
+        feature_expr = self._render_feature(f_spec, f.params_dict())
+        history_expr = self._render_history(h_spec, h.params_dict())
+        transform_expr = self._render_transform(t_spec, t.params_dict())
+        write_block = self._render_write(w_spec, w.params_dict())
         code = f'''import numpy as np
 
 def update_edge_distance(edge_distance, local_opt_tour, edge_n_used):
-    """Compiled S-PSO TSP GLS heuristic.
-
-    Contract: edge_distance and edge_n_used are n-by-n matrices; local_opt_tour
-    is a length-n tour; the returned value is a new finite symmetric n-by-n
-    distance matrix.
-    """
+    """Compiled TSP GLS heuristic with the public EoH signature."""
     base = np.asarray(edge_distance, dtype=float)
     tour = np.asarray(local_opt_tour, dtype=int).ravel()
     used = np.asarray(edge_n_used, dtype=float)
@@ -334,7 +260,6 @@ def update_edge_distance(edge_distance, local_opt_tour, edge_n_used):
         return base.copy()
     if np.any(tour < 0) or np.any(tour >= n):
         raise ValueError("tour contains an invalid node")
-
     aug = base.copy()
     positive = base[np.isfinite(base) & (base > 0.0)]
     scale = float(np.mean(positive)) if positive.size else 1.0
@@ -363,22 +288,18 @@ def update_edge_distance(edge_distance, local_opt_tour, edge_n_used):
     return aug
 '''
         description = (
-            f"candidate={e.module}; feature={f}; history={h.module}; "
-            f"transform={t.module}; write={w.module}({wp})"
+            f"candidate={e.module}; feature={f.module}; history={h.module}; "
+            f"transform={t.module}; write={w.module}"
         )
         return code, description
 
 
 def classic_gls_position(registry: ModuleRegistry) -> ParticlePosition:
     """The exact symbolic representation of the classic GLS penalty."""
-    return registry.validate_position(
-        ParticlePosition(
-            (
-                ModuleChoice.create("E", "tour_edges"),
-                ModuleChoice.create("F", "edge_length"),
-                ModuleChoice.create("H", "inverse_count"),
-                ModuleChoice.create("T", "identity"),
-                ModuleChoice.create("W", "symmetric_add_all", {"lambda": 1.0}),
-            )
-        )
-    )
+    return registry.validate_position(ParticlePosition((
+        ModuleChoice.create("E", "tour_edges"),
+        ModuleChoice.create("F", "edge_length"),
+        ModuleChoice.create("H", "inverse_count"),
+        ModuleChoice.create("T", "identity"),
+        ModuleChoice.create("W", "symmetric_add_all", {"lambda": 1.0}),
+    )))

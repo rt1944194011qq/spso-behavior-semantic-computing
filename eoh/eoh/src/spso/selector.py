@@ -36,12 +36,16 @@ class SemanticSelector:
         max_retries: int = 2,
         module_code_provider: Callable[[str, str, Mapping[str, Any] | None], str] | None = None,
         position_code_provider: Callable[[ParticlePosition], str] | None = None,
+        use_module_descriptions: bool = True,
+        evolution=None,
     ):
         self.registry = registry
         self.llm = llm
         self.max_retries = max(0, int(max_retries))
         self.module_code_provider = module_code_provider
         self.position_code_provider = position_code_provider
+        self.use_module_descriptions = bool(use_module_descriptions)
+        self.evolution = evolution
 
     def _cut_payload(self, cut_sets: Mapping[str, list[str]]) -> dict[str, list[dict[str, Any]]]:
         """Build the code-bearing candidate context sent to the LLM."""
@@ -63,10 +67,11 @@ class SemanticSelector:
                 params = spec.default_params()
                 entry = {
                     "module": module_id,
-                    "description": spec.description,
                     "parameters": parameters,
                     "default_params": params,
                 }
+                if self.use_module_descriptions:
+                    entry["description"] = spec.description
                 if self.module_code_provider is not None:
                     entry["code"] = self.module_code_provider(slot_id, module_id, params)
                 entries.append(entry)
@@ -89,8 +94,10 @@ class SemanticSelector:
         pbest: ParticlePosition,
         gbest: ParticlePosition,
         objectives: Mapping[str, float | None],
+        raw_alpha_cut: Mapping[str, list[str]] | None = None,
     ) -> str:
         cut_payload = self._cut_payload(cut_sets)
+        raw_alpha_cut = raw_alpha_cut or cut_sets
         return (
             "You are selecting modules for a typed heuristic program.\n"
             "Return JSON only, with this schema: "
@@ -101,15 +108,29 @@ class SemanticSelector:
             "update_edge_distance(edge_distance, local_opt_tour, edge_n_used) -> matrix.\n"
             "The candidate code below is reference code for internal compiler snippets. "
             "Do not write new executable code and do not change the public signature.\n"
-            f"Cut candidates with descriptions, parameters, and code:\n{json.dumps(cut_payload, ensure_ascii=False, indent=2)}\n"
-            f"Current: {json.dumps(current.to_dict(), ensure_ascii=False)}\n"
-            f"pbest: {json.dumps(pbest.to_dict(), ensure_ascii=False)}\n"
-            f"gbest: {json.dumps(gbest.to_dict(), ensure_ascii=False)}\n"
+            "Raw alpha-cut module IDs (before capacity-safe position construction):\n"
+            f"{json.dumps(dict(raw_alpha_cut), ensure_ascii=False, indent=2)}\n"
+            "Candidate module sets after cut -> current-set -> random-fill construction, "
+            "with descriptions, parameters, and code:\n"
+            f"{json.dumps(cut_payload, ensure_ascii=False, indent=2)}\n"
+            f"Current: {json.dumps(self._position_for_prompt(current), ensure_ascii=False)}\n"
+            f"pbest: {json.dumps(self._position_for_prompt(pbest), ensure_ascii=False)}\n"
+            f"gbest: {json.dumps(self._position_for_prompt(gbest), ensure_ascii=False)}\n"
             f"Objectives: {json.dumps(dict(objectives), ensure_ascii=False)}\n"
             f"{self._program_context('Current program', current)}\n"
             f"{self._program_context('pbest program', pbest)}\n"
             f"{self._program_context('gbest program', gbest)}\n"
         )
+
+    def _position_for_prompt(self, position: ParticlePosition) -> dict[str, Any]:
+        """Serialize a sequence without leaking descriptions in ablations."""
+        values = []
+        for choice in position.choices:
+            item = {"slot": choice.slot, "module": choice.module, "params": choice.params_dict()}
+            if self.use_module_descriptions:
+                item["description"] = self.registry.module(choice.slot, choice.module).description
+            values.append(item)
+        return {"choices": values}
 
     @staticmethod
     def _extract_json(response: str | None) -> dict[str, Any] | None:
@@ -168,10 +189,21 @@ class SemanticSelector:
             choices.append(ModuleChoice.create(slot, module))
         return SelectionResult(ParticlePosition(tuple(choices)), "B", "fallback")
 
-    def select(self, cut_sets, current, pbest, gbest, objectives, velocity) -> SelectionResult:
+    def select(
+        self,
+        cut_sets,
+        current,
+        pbest,
+        gbest,
+        objectives,
+        velocity,
+        raw_alpha_cut=None,
+    ) -> SelectionResult:
         if self.llm is None:
             return self._fallback(cut_sets, velocity)
-        prompt = self._prompt(cut_sets, current, pbest, gbest, objectives)
+        prompt = self._prompt(
+            cut_sets, current, pbest, gbest, objectives, raw_alpha_cut
+        )
         last_response = None
         for attempt in range(self.max_retries + 1):
             try:

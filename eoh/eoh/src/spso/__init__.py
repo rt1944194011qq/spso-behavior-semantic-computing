@@ -6,7 +6,7 @@ and an evaluator; :class:`SPSOEngine` supplies the reusable search process.
 """
 
 from .engine import SPSOConfig, SPSOEngine
-from .models import ModuleChoice, ParticlePosition
+from .models import ModuleChoice, ParticlePosition, SetPosition
 from .registry import ModuleRegistry, ModuleSpec, ParameterSpec, SlotSpec
 
 __all__ = [
@@ -15,6 +15,7 @@ __all__ = [
     "ModuleSpec",
     "ParameterSpec",
     "ParticlePosition",
+    "SetPosition",
     "SPSOConfig",
     "SPSOEngine",
     "SlotSpec",
