@@ -49,6 +49,13 @@ class RouteReportingTests(unittest.TestCase):
             checkpoint = json.loads((Path(output) / 'checkpoints/generation_0001.json').read_text())
             self.assertTrue(all(p['current_details'] for p in checkpoint['particles']))
             self.assertIn('reference=', (Path(output) / 'run_log.txt').read_text(encoding='utf-8'))
+            cut_rows = [
+                json.loads(line)
+                for line in (Path(output) / 'cut_log/generation_0001.jsonl').read_text(encoding='utf-8').splitlines()
+            ]
+            self.assertEqual(len(cut_rows), 2)
+            self.assertEqual([slot['slot'] for slot in cut_rows[0]['slots']], list(registry.slot_ids))
+            self.assertTrue(all(slot['cut_modules'] for slot in cut_rows[0]['slots']))
             # Resume round-trips current evidence even when no generations remain.
             restored, _ = engine._restore(Path(output) / 'checkpoints/generation_0001.json')
             self.assertTrue(all(p.current_details for p in restored))

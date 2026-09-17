@@ -131,10 +131,12 @@ class SPSOEngine:
         self.output_dir = Path(self.config.output_dir)
         self.sample_dir = self.output_dir / "samples"
         self.checkpoint_dir = self.output_dir / "checkpoints"
+        self.cut_log_dir = self.output_dir / "cut_log"
         self.run_log_path = self.output_dir / "run_log.txt"
         self.generation_metrics_path = self.output_dir / "generation_metrics.jsonl"
         self.sample_dir.mkdir(parents=True, exist_ok=True)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        self.cut_log_dir.mkdir(parents=True, exist_ok=True)
         self.sample_count = 0
         self.evaluation_count = 0
         self.cache: dict[str, dict[str, Any]] = {}
@@ -213,6 +215,94 @@ class SPSOEngine:
                 "best_objective": best,
                 "particles": rows,
             }, ensure_ascii=False) + "\n")
+
+    def _module_code_for_log(self, slot_id: str, module_id: str, params: dict[str, Any]) -> str | None:
+        provider = getattr(self.selector, "module_code_provider", None)
+        if provider is None:
+            return None
+        try:
+            return provider(slot_id, module_id, params)
+        except Exception as exc:
+            logger.debug("could not render module code for cut log %s/%s: %s", slot_id, module_id, exc)
+            return None
+
+    def _cut_log_record(
+        self,
+        generation: int,
+        particle_index: int,
+        current: ParticlePosition,
+        pbest: ParticlePosition,
+        gbest: ParticlePosition,
+        cuts: dict[str, list[str]],
+        objectives: dict[str, float | None],
+        velocity: dict[str, dict[str, float]],
+    ) -> dict[str, Any]:
+        current_map = current.as_mapping()
+        pbest_map = pbest.as_mapping()
+        gbest_map = gbest.as_mapping()
+        slots = []
+        for slot in self.registry.slots:
+            slot_velocity = {
+                module.module_id: float(velocity.get(slot.slot_id, {}).get(module.module_id, 0.0))
+                for module in slot.modules
+            }
+            maximum = max(slot_velocity.values()) if slot_velocity else 0.0
+            threshold = self.config.alpha * maximum if maximum > 0 else maximum
+            anchors = {
+                "current": current_map[slot.slot_id].to_dict(),
+                "pbest": pbest_map[slot.slot_id].to_dict(),
+                "gbest": gbest_map[slot.slot_id].to_dict(),
+            }
+            candidates = []
+            for module_id in cuts[slot.slot_id]:
+                spec = self.registry.module(slot.slot_id, module_id)
+                params = spec.default_params()
+                candidate = {
+                    "module": module_id,
+                    "description": spec.description,
+                    "default_params": params,
+                    "velocity": slot_velocity.get(module_id, 0.0),
+                    "anchor_roles": [
+                        name for name, choice in anchors.items()
+                        if choice["module"] == module_id
+                    ],
+                }
+                code = self._module_code_for_log(slot.slot_id, module_id, params)
+                if code is not None:
+                    candidate["code"] = code
+                candidates.append(candidate)
+            slots.append({
+                "slot": slot.slot_id,
+                "description": slot.description,
+                "min_cut": slot.min_cut,
+                "max_cut": slot.max_cut,
+                "threshold": threshold,
+                "anchors": anchors,
+                "velocity_scores": dict(sorted(
+                    slot_velocity.items(),
+                    key=lambda item: (-item[1], item[0]),
+                )),
+                "cut_modules": candidates,
+            })
+        return {
+            "generation": generation,
+            "particle": particle_index,
+            "alpha": self.config.alpha,
+            "objectives": objectives,
+            "current_position": current.to_dict(),
+            "current_position_text": current.algorithm_text(self.registry.slot_ids),
+            "pbest_position": pbest.to_dict(),
+            "pbest_position_text": pbest.algorithm_text(self.registry.slot_ids),
+            "gbest_position": gbest.to_dict(),
+            "gbest_position_text": gbest.algorithm_text(self.registry.slot_ids),
+            "slots": slots,
+        }
+
+    def _write_cut_log(self, generation: int, rows: list[dict[str, Any]]):
+        path = self.cut_log_dir / f"generation_{generation:04d}.jsonl"
+        with path.open("w", encoding="utf-8") as handle:
+            for row in rows:
+                handle.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     def _key(self, position: ParticlePosition) -> str:
         return json.dumps(position.to_dict(), sort_keys=True, separators=(",", ":"))
@@ -525,7 +615,8 @@ class SPSOEngine:
                 # Update all categorical velocities in the coordinator thread,
                 # then freeze one generation snapshot before starting workers.
                 plans = []
-                for particle in particles:
+                cut_rows = []
+                for particle_index, particle in enumerate(particles, start=1):
                     if particle.pbest_position is None:
                         continue
                     particle.velocity = update_velocity(
@@ -553,6 +644,16 @@ class SPSOEngine:
                         "pbest": particle.pbest_objective,
                         "gbest": self.gbest_objective,
                     }
+                    cut_rows.append(self._cut_log_record(
+                        generation,
+                        particle_index,
+                        particle.position,
+                        particle.pbest_position,
+                        snapshot,
+                        cuts,
+                        objectives,
+                        particle.velocity,
+                    ))
                     plans.append((
                         particle,
                         particle.position,
@@ -563,6 +664,7 @@ class SPSOEngine:
                         particle.velocity,
                         self.rng.getrandbits(64),
                     ))
+                self._write_cut_log(generation, cut_rows)
 
                 futures = [
                     self._sampler_executor.submit(self._produce_evolution_candidate, plan)
@@ -602,6 +704,7 @@ class SPSOEngine:
             "elapsed_seconds": elapsed,
             "run_log": str(self.run_log_path),
             "generation_metrics": str(self.generation_metrics_path),
+            "cut_log": str(self.cut_log_dir),
         }
         with (self.output_dir / "summary.json").open("w", encoding="utf-8") as handle:
             json.dump(summary, handle, ensure_ascii=False, indent=2)
