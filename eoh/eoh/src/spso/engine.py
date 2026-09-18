@@ -13,6 +13,7 @@ import os
 import random
 import threading
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
@@ -560,6 +561,7 @@ class SPSOEngine:
             return candidate
 
         details = None
+        evaluation_failure_reason = None
         try:
             result = self._run_evaluation(code)
             if isinstance(result, dict):
@@ -570,6 +572,14 @@ class SPSOEngine:
         except Exception as exc:
             logger.warning("candidate evaluation failed: %s", exc)
             objective = None
+            evaluation_failure_reason = (
+                f"evaluation exception: {type(exc).__name__}: {exc}"
+            )
+        if objective is None and evaluation_failure_reason is None:
+            evaluation_failure_reason = (
+                "evaluation returned None (most likely outer timeout or "
+                "problem.evaluate swallowed an exception)"
+            )
         if objective is not None and (objective != objective or objective in (float("inf"), float("-inf"))):
             objective = None
 
@@ -595,7 +605,10 @@ class SPSOEngine:
             operator=operator,
             base_position=base_position,
             prompt_ids=prompt_ids,
-            failure_reason=failure_reason if objective is None else None,
+            failure_reason=(
+                (failure_reason or evaluation_failure_reason)
+                if objective is None else None
+            ),
         )
         self._record(candidate)
         return candidate
@@ -672,7 +685,20 @@ class SPSOEngine:
             candidates = [future.result() for future in futures]
         valid = [candidate for candidate in candidates if candidate.objective is not None]
         if len(valid) < self.config.population_size:
-            raise RuntimeError("not enough valid initial candidates to form a population")
+            failures = Counter(
+                candidate.failure_reason or "evaluation returned None (timeout or problem.evaluate failure)"
+                for candidate in candidates
+                if candidate.objective is None
+            )
+            detail = "; ".join(f"{reason}: {count}" for reason, count in failures.most_common())
+            self._log(
+                f"  initialisation failed: valid={len(valid)}/{len(candidates)}; "
+                f"failure_reasons={detail}"
+            )
+            raise RuntimeError(
+                "not enough valid initial candidates to form a population; "
+                f"valid={len(valid)}/{len(candidates)}; {detail}"
+            )
         valid.sort(key=lambda candidate: candidate.objective)
         particles = []
         seen = set()

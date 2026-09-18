@@ -1,0 +1,7 @@
+# Reproducible runtime for the TSP GLS / S-PSO experiments.
+# Python 3.10 is the tested interpreter version.
+numpy==2.2.6
+numba==0.67.0
+joblib==1.6.0
+requests==2.34.2
+-e ./eoh/eoh

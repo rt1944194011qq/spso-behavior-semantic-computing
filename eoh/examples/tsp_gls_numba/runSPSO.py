@@ -18,14 +18,17 @@ sys.path.insert(0, str(SRC))
 # Fill in the laboratory key locally before an online run. Do not commit a real
 # credential to a shared repository.
 DEEPSEEK_ENDPOINT = "api.deepseek.com"
-DEEPSEEK_API_KEY = "在这里填写 DeepSeek API Key"
+DEEPSEEK_API_KEY = ""
 DEEPSEEK_MODEL = "deepseek-flash"
 DEEPSEEK_TIMEOUT = 150
 
 # ── experiment configuration ─────────────────────────────────────────────────
 # Change these values here, matching the style of the original EoH example.
 OFFLINE = False                 # True = deterministic run without an LLM
-OUTPUT_DIR = HERE / "results_spso" / "run_20g_64inst"
+SMOKE_TEST = False              # True = quick 3-instance/1-generation pipeline check
+# Formal Fig. 3(a)-style run.  Use a fresh directory for each seed so that
+# checkpoints, samples and curves from separate repetitions never mix.
+OUTPUT_DIR = HERE / "results_spso" / "fig3a_full_seed2024"
 SEED = 2024
 POPULATION_SIZE = 10
 GENERATIONS = 20
@@ -33,20 +36,50 @@ INITIAL_SAMPLES = 20            # None = 2 * POPULATION_SIZE
 MAX_EVALUATIONS = None          # Full run: generations * population_size
 RESUME_FROM = None              # e.g. OUTPUT_DIR / "checkpoints/generation_0001.json"
 
-TRAIN_INSTANCES = 64            # Reproduction setting: all 64 TSP100 instances
+TRAIN_INSTANCES = 64            # Fig. 3(a): all 64 TSP100 instances
 GLS_TIME_LIMIT = 60.0
-GLS_ITE_MAX = 1000
+GLS_ITE_MAX = 1000              # Fig. 3(a): local search max iterations
 PERTURBATION_MOVES = 1
 TASK_TIMEOUT = 4200             # 64 * 60 seconds plus outer-process margin
-NUM_SAMPLERS = 16
-NUM_EVALUATORS = 16
+# The allocated server node has 30 CPU cores.  Evaluations are the CPU-bound
+# stage; sampler threads mostly wait for LLM/network and evaluation futures.
+NUM_SAMPLERS = 30
+NUM_EVALUATORS = 30
 CACHE_EVALUATIONS = False     # False = fair comparison: evaluate every generated sample
 PRINT_BEST_ROUTES = True      # Print all 64 closed tours from the winning evaluation
 ALPHA = None                  # None = sample one paper alpha per particle/generation; 0.5 = fixed-alpha ablation
-MODULES_PER_SLOT = 10
+MODULES_PER_SLOT = 5
 HEURISTIC_OPERATORS = ["p1", "p2", "p3", "p4"]
 USE_MODULE_DESCRIPTIONS = True
-FROZEN_MODULE_LIBRARY = None  # Set to a prior module_library.json for ablation runs.
+REUSE_EXISTING_MODULES = True
+REUSE_EXISTING_PROBABILITY = 0.5
+
+# Initial module-library policy:
+#   False -> call the LLM and generate a new library;
+#   True  -> load an existing module_library.json and skip library generation.
+REUSE_MODULE_LIBRARY = True
+# None means OUTPUT_DIR/module_library/module_library.json.  Set an explicit
+# path when reusing a library from another experiment.
+MODULE_LIBRARY_PATH = (
+    HERE / "results_spso" / "fig3a_spso"
+    / "module_library" / "module_library.json"
+)
+# Backward-compatible alias for older local scripts. Prefer the two settings
+# above in new experiments.
+FROZEN_MODULE_LIBRARY = None
+
+# Keep the paper configuration above unchanged, but provide a switch for
+# validating the complete LLM -> compile -> evaluate -> PSO pipeline before a
+# full 64-instance run.  The smoke output uses a separate directory so it
+# cannot contaminate the paper result files.
+if SMOKE_TEST:
+    OUTPUT_DIR = HERE / "results_spso" / "smoke_test"
+    GENERATIONS = 1
+    TRAIN_INSTANCES = 3
+    GLS_TIME_LIMIT = 10.0
+    TASK_TIMEOUT = 120
+    NUM_SAMPLERS = 4
+    NUM_EVALUATORS = 4
 
 from eoh.eoh.evolution import _eval_with_timeout  # noqa: E402
 from spso import SPSOConfig, SPSOEngine  # noqa: E402
@@ -110,8 +143,7 @@ def create_llm(prototype, offline: bool):
 
 
 def load_module_registry(prototype, llm):
-    """Load a frozen/resumed library, building it only for a fresh run."""
-    library_path = globals().get("FROZEN_MODULE_LIBRARY", None)
+    """Load a checkpoint/library or build a new module library."""
     resume_library = None
     if RESUME_FROM:
         import json
@@ -122,10 +154,21 @@ def load_module_registry(prototype, llm):
     if resume_library:
         registry = build_tsp_gls_registry()
         registry.restore_library(resume_library)
-    elif library_path:
+    elif REUSE_MODULE_LIBRARY or FROZEN_MODULE_LIBRARY:
+        library_path = Path(MODULE_LIBRARY_PATH or FROZEN_MODULE_LIBRARY) if (
+            MODULE_LIBRARY_PATH or FROZEN_MODULE_LIBRARY
+        ) else (
+            Path(OUTPUT_DIR) / "module_library" / "module_library.json"
+        )
+        if not library_path.is_file():
+            raise RuntimeError(
+                "REUSE_MODULE_LIBRARY=True, but module library was not found: "
+                f"{library_path}. Set MODULE_LIBRARY_PATH or use "
+                "REUSE_MODULE_LIBRARY=False to generate it."
+            )
         import json
         registry = build_tsp_gls_registry()
-        registry.restore_library(json.loads(Path(library_path).read_text(encoding="utf-8")))
+        registry.restore_library(json.loads(library_path.read_text(encoding="utf-8")))
     else:
         registry = TSPModuleLibraryBuilder(
             prototype,
@@ -160,6 +203,8 @@ def main():
         llm,
         use_descriptions=USE_MODULE_DESCRIPTIONS,
         output_dir=Path(OUTPUT_DIR),
+        reuse_existing_modules=REUSE_EXISTING_MODULES,
+        reuse_existing_probability=REUSE_EXISTING_PROBABILITY,
     )
     selector = SemanticSelector(
         registry,
@@ -192,11 +237,23 @@ def main():
         llm_model=DEEPSEEK_MODEL,
     )
     engine = SPSOEngine(registry, compiler, evaluate, config, selector)
+    engine.metadata["child_reuse_policy"] = {
+        "enabled": REUSE_EXISTING_MODULES,
+        "probability_for_p1_p2_p3": REUSE_EXISTING_PROBABILITY,
+        "p4_reuses_module": True,
+    }
     summary = engine.run()
+    import json
+    reuse_stats_path = Path(OUTPUT_DIR) / "child_reuse_stats.json"
+    reuse_stats_path.write_text(
+        json.dumps(evolution.reuse_stats, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
     print("S-PSO finished")
     print(f"best objective: {summary['best_objective']}")
     print(f"best position: {summary['best_position_text']}")
     print(f"samples: {summary['samples']}  independent evaluations: {summary['independent_evaluations']}")
+    print(f"child reuse stats: {evolution.reuse_stats}")
     if PRINT_BEST_ROUTES:
         import json
         best_path = Path(OUTPUT_DIR) / "samples" / "best.json"

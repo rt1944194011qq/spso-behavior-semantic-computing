@@ -1,0 +1,708 @@
+{
+  "slots": [
+    {
+      "slot_id": "E",
+      "description": "candidate edge generator; outputs undirected (u, v) pairs",
+      "min_cut": 1,
+      "max_cut": 4,
+      "set_capacity": 3,
+      "modules": [
+        {
+          "module_id": "llm_E_54e2e6456c0a",
+          "description": "Generates candidate edges by combining current tour edges with the shortest connection from each non-tour node to the tour, producing an augmented undirected edge set.",
+          "parameters": [],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "tour_neighbors",
+            "family": "tour_neighbors",
+            "polarity": "broad"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "tour_neighbors",
+          "polarity": "broad",
+          "content_hash": "9cb11c7fb65b111f10d8ec9cdad99b9841d3ea3641045e262b8dd93fd7c6100c"
+        },
+        {
+          "module_id": "llm_E_00a49b7d7ded",
+          "description": "Edges introduced by non-adjacent 2-opt exchanges on the current local-optimal tour.",
+          "parameters": [],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "two_opt_cross",
+            "family": "move_aware",
+            "polarity": "broad"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "move_aware",
+          "polarity": "broad",
+          "content_hash": "97758eeb3733f9de7d1744b516c68cd1d4c927cd564d021ffcc4d6d34eb7cf4d"
+        },
+        {
+          "module_id": "llm_E_9d2023f30308",
+          "description": "Generates the current tour edges together with the k highest-history edges (k=7), falling back to tour edges when history is empty.",
+          "parameters": [
+            {
+              "name": "k",
+              "kind": "int",
+              "default": 7,
+              "choices": [],
+              "minimum": 1,
+              "maximum": 50
+            }
+          ],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "tour_usage_mix",
+            "family": "usage",
+            "polarity": "mixed"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "usage",
+          "polarity": "mixed",
+          "content_hash": "6804d6b2522cd71c7ba5bed4847135127563203221a2293e2c1f18074c7c4e76"
+        },
+        {
+          "module_id": "llm_E_a626e22590bf",
+          "description": "Generates undirected candidate edges from the current tour plus the k nearest neighbors of each tour node, with k=5.",
+          "parameters": [
+            {
+              "name": "k",
+              "kind": "int",
+              "default": 5,
+              "choices": [],
+              "minimum": 1,
+              "maximum": 10
+            }
+          ],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "tour_k_neighbors",
+            "family": "tour_neighbors",
+            "polarity": "broad"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "tour_neighbors",
+          "polarity": "broad",
+          "content_hash": "cadf73b705d1dd5d97b31a18ccb7be9dbb3b558caa436375975d820010b54e1d"
+        },
+        {
+          "module_id": "llm_E_be357276493d",
+          "description": "Generates up to the 10 highest-history undirected (u, v) edges, falling back to the current tour edges when history is empty.",
+          "parameters": [
+            {
+              "name": "k",
+              "kind": "int",
+              "default": 10,
+              "choices": [],
+              "minimum": 1,
+              "maximum": 50
+            }
+          ],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "usage_topk",
+            "family": "usage",
+            "polarity": "history_high"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "usage",
+          "polarity": "history_high",
+          "content_hash": "8b9e9ec1da527425bb3200b3c7ad7bc395e960740a354481e8010638d8e357ca"
+        }
+      ]
+    },
+    {
+      "slot_id": "F",
+      "description": "positive edge feature used as the base penalty",
+      "min_cut": 1,
+      "max_cut": 4,
+      "set_capacity": 3,
+      "modules": [
+        {
+          "module_id": "llm_F_391ac1cb5b5d",
+          "description": "logarithmically scaled relative edge length, computed as log(1 + d(u,v)/mean_positive_distance), providing a positive base penalty.",
+          "parameters": [],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "relative_distance",
+            "family": "distance",
+            "polarity": "long"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "distance",
+          "polarity": "long",
+          "content_hash": "b8311649e80eb87d4a38b7235d51396c4537b5043bbb2c9376525d3370750f30"
+        },
+        {
+          "module_id": "llm_F_40a6c724b224",
+          "description": "Distance divided by the current tour mean edge length, giving a positive scale-normalized base penalty feature.",
+          "parameters": [],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "tour_relative",
+            "family": "distance",
+            "polarity": "long"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "distance",
+          "polarity": "long",
+          "content_hash": "ed1d58537b91a3e683d337bb5a1411ae8c235a4d09c2c64e8187cbaa4ab2467f"
+        },
+        {
+          "module_id": "llm_F_6b20f8d86db1",
+          "description": "Raise the inverse normalized distance to a bounded exponent to favor short edges as the positive penalty feature.",
+          "parameters": [
+            {
+              "name": "exponent",
+              "kind": "float",
+              "default": 1.5,
+              "choices": [],
+              "minimum": 0.25,
+              "maximum": 3.0
+            }
+          ],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "inverse_power",
+            "family": "distance_power",
+            "polarity": "short"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "distance_power",
+          "polarity": "short",
+          "content_hash": "29d2d1e1c03fb8c4bae21fbcdb22357042b7e23a6d1d2d83cb9685ea78f4f304"
+        },
+        {
+          "module_id": "llm_F_fec065aef091",
+          "description": "Positive part of the matrix-normalized edge length minus one, used as the base penalty.",
+          "parameters": [],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "excess",
+            "family": "outlier",
+            "polarity": "long"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "outlier",
+          "polarity": "long",
+          "content_hash": "1254d956018724254e933efb24fa01c0dc3890e96fb9e407bf93ab8b44b01791"
+        },
+        {
+          "module_id": "llm_F_77069f7cd228",
+          "description": "A normalized edge penalty that adds a bounded nonnegative offset to distance divided by the positive matrix mean.",
+          "parameters": [
+            {
+              "name": "offset",
+              "kind": "float",
+              "default": 0.25,
+              "choices": [],
+              "minimum": 0.0,
+              "maximum": 2.0
+            }
+          ],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "offset_relative",
+            "family": "distance_offset",
+            "polarity": "long"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "distance_offset",
+          "polarity": "long",
+          "content_hash": "e6766987b218e563c63116bf79298b52fbdb1bfb43291acd70a5a7f9a5eeb0a3"
+        }
+      ]
+    },
+    {
+      "slot_id": "H",
+      "description": "history factor based on edge_n_used",
+      "min_cut": 1,
+      "max_cut": 4,
+      "set_capacity": 3,
+      "modules": [
+        {
+          "module_id": "llm_H_09bd05a1962f",
+          "description": "Quadratic inverse-count history factor: multiply by 1/(1 + edge_n_used)^2 to more strongly suppress edges reused across GLS iterations.",
+          "parameters": [
+            {
+              "name": "gamma",
+              "kind": "float",
+              "default": 2.0,
+              "choices": [],
+              "minimum": 0.1,
+              "maximum": 2.0
+            }
+          ],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "power_decay",
+            "family": "history",
+            "polarity": "decay"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "history",
+          "polarity": "decay",
+          "content_hash": "91e5804ceefe1a3f8ea6a3c051004d8c3f7e7e0c51fac441e42b0edd4c78ba22"
+        },
+        {
+          "module_id": "llm_H_242abc3ad6d5",
+          "description": "Multiply by exp(-count/5.0), an exponential decay history factor based on edge usage count.",
+          "parameters": [
+            {
+              "name": "tau",
+              "kind": "float",
+              "default": 5.0,
+              "choices": [],
+              "minimum": 0.5,
+              "maximum": 20.0
+            }
+          ],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "exponential_decay",
+            "family": "history",
+            "polarity": "decay"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "history",
+          "polarity": "decay",
+          "content_hash": "33f9101a2ed8a0328ffd4e102d064f3c170464da6a3447436b412413d506f888"
+        },
+        {
+          "module_id": "llm_H_7eb4e1ddda23",
+          "description": "Multiply the history penalty by 1/log2(2+edge_n_used), yielding a logarithmic inverse-usage factor for slot H.",
+          "parameters": [],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "inverse_log",
+            "family": "history",
+            "polarity": "decay"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "history",
+          "polarity": "decay",
+          "content_hash": "e1ce86881eb37a5e8d5cd7437e3b03f1591624099e492371a3bc67f03a6efe58"
+        },
+        {
+          "module_id": "llm_H_f13ae6dd46ac",
+          "description": "increase the score of repeatedly used edges by strength 0.25 to encourage diversification.",
+          "parameters": [
+            {
+              "name": "strength",
+              "kind": "float",
+              "default": 0.25,
+              "choices": [],
+              "minimum": 0.0,
+              "maximum": 2.0
+            }
+          ],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "usage_boost",
+            "family": "history",
+            "polarity": "boost"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "history",
+          "polarity": "boost",
+          "content_hash": "66af86b006cda330807041f06564dea336eb7c9497be8021cabbdc33a7cc0cc0"
+        },
+        {
+          "module_id": "llm_H_7f01f5a33dc7",
+          "description": "For slot H, multiplies the edge score by 1/sqrt(1+edge_n_used) to apply a mild inverse-square-root history penalty.",
+          "parameters": [],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "inverse_sqrt",
+            "family": "history",
+            "polarity": "decay"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "history",
+          "polarity": "decay",
+          "content_hash": "786c568499966ebd5b9f1b6a86bab4ddaf6de54b546f3c0bebc8b5df87838563"
+        }
+      ]
+    },
+    {
+      "slot_id": "T",
+      "description": "nonnegative score transformation",
+      "min_cut": 1,
+      "max_cut": 4,
+      "set_capacity": 3,
+      "modules": [
+        {
+          "module_id": "llm_T_00ed7647ce68",
+          "description": "Cube the nonnegative penalty score to strongly emphasise large penalties while preserving nonnegativity.",
+          "parameters": [],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "square",
+            "family": "transform",
+            "polarity": "amplify"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "transform",
+          "polarity": "amplify",
+          "content_hash": "9bb2f746d9416a5253ab1d839ab02ac1cf8dd7ff7dd097b1543503819918473b"
+        },
+        {
+          "module_id": "llm_T_a81de8b809d0",
+          "description": "use tanh(score/2.0) to bound very large penalties smoothly.",
+          "parameters": [
+            {
+              "name": "tau",
+              "kind": "float",
+              "default": 2.0,
+              "choices": [],
+              "minimum": 0.1,
+              "maximum": 10.0
+            }
+          ],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "tanh",
+            "family": "transform",
+            "polarity": "compress"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "transform",
+          "polarity": "compress",
+          "content_hash": "2f520faf270a33ffffc38c47fd55896cdeb5af0cbd00c409ac9a1385aaa4b26b"
+        },
+        {
+          "module_id": "llm_T_d0462a6950f7",
+          "description": "take the square root of the positive penalty score to compress large penalties",
+          "parameters": [],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "sqrt",
+            "family": "transform",
+            "polarity": "compress"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "transform",
+          "polarity": "compress",
+          "content_hash": "4c652ae1cdba98fa3605c76147df08655610888eecda754a23ac74cac163ba8e"
+        },
+        {
+          "module_id": "llm_T_e093999f78a6",
+          "description": "Use log1p(score) to smoothly compress large penalty scores while preserving small ones.",
+          "parameters": [],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "log1p",
+            "family": "transform",
+            "polarity": "compress"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "transform",
+          "polarity": "compress",
+          "content_hash": "a7b0e199239dee0b93bbfcce09e728b90e707590f346bb2b10d53b3be5022dc4"
+        },
+        {
+          "module_id": "llm_T_a25186316645",
+          "description": "cap the penalty score at a fixed scale of 3.0 to limit very large penalties",
+          "parameters": [
+            {
+              "name": "cap",
+              "kind": "float",
+              "default": 3.0,
+              "choices": [],
+              "minimum": 0.1,
+              "maximum": 20.0
+            }
+          ],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "clip",
+            "family": "transform",
+            "polarity": "bound"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "transform",
+          "polarity": "bound",
+          "content_hash": "01b2547f9dc422f1c47d1584124a6cf05e7ab19a0781cd7a548fa66f8464ddfd"
+        }
+      ]
+    },
+    {
+      "slot_id": "W",
+      "description": "write the nonnegative score back to the symmetric matrix",
+      "min_cut": 1,
+      "max_cut": 4,
+      "set_capacity": 3,
+      "modules": [
+        {
+          "module_id": "llm_W_3635fc892132",
+          "description": "Normalize nonnegative candidate scores by their total sum and scale by lambda before writing them symmetrically to both matrix directions.",
+          "parameters": [
+            {
+              "name": "lambda",
+              "kind": "float",
+              "default": 1.0,
+              "choices": [],
+              "minimum": 0.1,
+              "maximum": 2.0
+            }
+          ],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "add_normalized",
+            "family": "write",
+            "polarity": "normalized"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "write",
+          "polarity": "normalized",
+          "content_hash": "693df1b916d09238fdf3656cad3f85b7a8a6448cea160ef98c8c3a278650ee8e"
+        },
+        {
+          "module_id": "llm_W_f0af26f8fee1",
+          "description": "Symmetrically add candidate scores above a score quantile to both matrix directions, scaled by lambda.",
+          "parameters": [
+            {
+              "name": "fraction",
+              "kind": "float",
+              "default": 0.5,
+              "choices": [],
+              "minimum": 0.1,
+              "maximum": 1.0
+            },
+            {
+              "name": "lambda",
+              "kind": "float",
+              "default": 1.0,
+              "choices": [],
+              "minimum": 0.1,
+              "maximum": 2.0
+            }
+          ],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "add_quantile",
+            "family": "write",
+            "polarity": "sparse"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "write",
+          "polarity": "sparse",
+          "content_hash": "9d952a951b1b90c4ac16bdc767c0b5023bc28132aeff730c3ddeac72e0420c53"
+        },
+        {
+          "module_id": "llm_W_49e20b33816f",
+          "description": "Symmetrically writes the top five nonnegative candidate scores back into the matrix, scaled by lambda.",
+          "parameters": [
+            {
+              "name": "k",
+              "kind": "int",
+              "default": 5,
+              "choices": [],
+              "minimum": 1,
+              "maximum": 50
+            },
+            {
+              "name": "lambda",
+              "kind": "float",
+              "default": 1.0,
+              "choices": [],
+              "minimum": 0.1,
+              "maximum": 2.0
+            }
+          ],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "add_topk",
+            "family": "write",
+            "polarity": "sparse"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "write",
+          "polarity": "sparse",
+          "content_hash": "d720bcd370212a1fe986d8cf1c4d06c857fac22afa540e58d26516ea7798f778"
+        },
+        {
+          "module_id": "llm_W_39ed9be40621",
+          "description": "Write all candidate scores to both symmetric matrix directions with a rank-decaying weight using exponent 0.8 and lambda 1.2.",
+          "parameters": [
+            {
+              "name": "exponent",
+              "kind": "float",
+              "default": 0.8,
+              "choices": [],
+              "minimum": 0.0,
+              "maximum": 2.0
+            },
+            {
+              "name": "lambda",
+              "kind": "float",
+              "default": 1.2,
+              "choices": [],
+              "minimum": 0.1,
+              "maximum": 2.0
+            }
+          ],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "rank_weighted",
+            "family": "write",
+            "polarity": "ranked"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "write",
+          "polarity": "ranked",
+          "content_hash": "cc1a4ff440a7b508a71acba70a0ca37708c55800f9013e98e6de000bcd693d30"
+        },
+        {
+          "module_id": "llm_W_e8265857805a",
+          "description": "Write candidate scores symmetrically after applying a usage-balancing factor scaled by lambda.",
+          "parameters": [
+            {
+              "name": "lambda",
+              "kind": "float",
+              "default": 0.8,
+              "choices": [],
+              "minimum": 0.1,
+              "maximum": 2.0
+            }
+          ],
+          "tags": [
+            "llm_generated"
+          ],
+          "reverse_of": null,
+          "similar_to": [],
+          "recipe": {
+            "kind": "usage_balanced",
+            "family": "write",
+            "polarity": "balanced"
+          },
+          "generation": 0,
+          "source_operator": "p0",
+          "semantic_family": "write",
+          "polarity": "balanced",
+          "content_hash": "b5f1c3c482985642ef5d1d49b17b8beb190c6b937b633fb2a35829d3697b3143"
+        }
+      ]
+    }
+  ]
+}

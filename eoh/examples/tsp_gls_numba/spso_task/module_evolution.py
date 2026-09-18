@@ -187,12 +187,20 @@ class TSPModuleLibraryBuilder:
                            "required": "one sentence description followed by a typed implementation"},
                           ensure_ascii=False, indent=2)
 
-    def _description(self, slot_id: str, index: int, generation=0):
+    def _description(self, slot_id: str, index: int, generation=0, accepted_signatures=()):
+        novelty = ""
+        if accepted_signatures:
+            novelty = (
+                "\nAlready accepted normalized implementations for this slot:\n"
+                f"{json.dumps(list(accepted_signatures), ensure_ascii=False, indent=2)}\n"
+                "Design a different module by changing the recipe kind when useful, "
+                "or by changing bounded parameter values.\n"
+            )
         prompt = (
             "MODULE_DESCRIPTION phase. Return JSON only: "
             '{"description":"one concise sentence"}.\n'
             f"Create a new executable TSP GLS module for slot {slot_id}, candidate {index}.\n"
-            f"{self._library_prompt(slot_id)}"
+            f"{self._library_prompt(slot_id)}{novelty}"
         )
         def validate(response):
             data = _json_object(response)
@@ -219,12 +227,19 @@ class TSPModuleLibraryBuilder:
             for parameter in template.parameters
         }
 
-    def _implementation(self, slot_id: str, index: int, description: str, generation=0):
+    def _implementation(self, slot_id: str, index: int, description: str, generation=0, accepted_signatures=()):
+        novelty = ""
+        if accepted_signatures:
+            novelty = (
+                "\nAvoid these already accepted normalized implementations:\n"
+                f"{json.dumps(list(accepted_signatures), ensure_ascii=False, indent=2)}\n"
+                "Return a recipe whose kind and parameter values produce a new implementation.\n"
+            )
         prompt = (
             "MODULE_IMPLEMENTATION phase. The previous response is the design sentence. "
             "Return JSON only with recipe={kind,family,polarity,parameters} and optional "
             "parameter_schema. Use only the typed recipe kinds in the examples; do not emit Python.\n"
-            f"description={description}\n{self._library_prompt(slot_id)}"
+            f"description={description}\n{self._library_prompt(slot_id)}{novelty}"
         )
         allowed = self._allowed_kinds(slot_id)
         def validate(response):
@@ -259,10 +274,18 @@ class TSPModuleLibraryBuilder:
             signatures = set()
             for index in range(1, self.modules_per_slot + 1):
                 accepted_one = False
-                for attempt in range(self.max_retries + 1):
+                # Building ten unique modules per slot is harder than a normal
+                # schema retry: valid LLM answers can still be duplicates.
+                # Give uniqueness retries a larger budget without relaxing the
+                # adapter-owned recipe schema.
+                for attempt in range(max(self.max_retries + 1, self.modules_per_slot * 2)):
                     try:
-                        description, desc_response, desc_id = self._description(slot.slot_id, index)
-                        (recipe, parameters, values), impl_response, impl_id = self._implementation(slot.slot_id, index, description)
+                        description, desc_response, desc_id = self._description(
+                            slot.slot_id, index, accepted_signatures=sorted(signatures)
+                        )
+                        (recipe, parameters, values), impl_response, impl_id = self._implementation(
+                            slot.slot_id, index, description, accepted_signatures=sorted(signatures)
+                        )
                         signature = json.dumps({
                             "slot": slot.slot_id,
                             "kind": recipe["kind"],
@@ -324,12 +347,26 @@ class TSPModuleLibraryBuilder:
 class TSPModuleEvolution:
     """Generate legal p0--p4 proposals against a frozen library snapshot."""
 
-    def __init__(self, registry: ModuleRegistry, compiler, llm=None, *, use_descriptions=True, max_retries=2, output_dir=None):
+    def __init__(self, registry: ModuleRegistry, compiler, llm=None, *, use_descriptions=True,
+                 max_retries=2, output_dir=None, reuse_existing_modules=False,
+                 reuse_existing_probability=0.0):
         self.registry = registry
         self.compiler = compiler
         self.llm = LLMProtocol(llm, output_dir=output_dir)
         self.use_descriptions = bool(use_descriptions)
         self.max_retries = int(max_retries)
+        self.reuse_existing_modules = bool(reuse_existing_modules)
+        self.reuse_existing_probability = float(reuse_existing_probability)
+        if not 0.0 <= self.reuse_existing_probability <= 1.0:
+            raise ValueError("reuse_existing_probability must be in [0, 1]")
+        self.reuse_stats = {
+            "eligible": 0,
+            "attempted": 0,
+            "llm_selected": 0,
+            "deterministic_fallback": 0,
+            "new_module": 0,
+        }
+        self._reuse_stats_lock = threading.Lock()
 
     def _module_payload(self, slot_id: str, ids: list[str] | tuple[str, ...]) -> list[dict[str, Any]]:
         output = []
@@ -367,6 +404,137 @@ class TSPModuleEvolution:
                 if any(module.module_id != reference.module_id for module in modules) or reference.parameters:
                     candidates.append(slot_id)
         return candidates
+
+    def _reuse_candidates(self, operator: str, base: ParticlePosition,
+                          cut_sets: Mapping[str, list[str]], slot_id: str) -> list[str]:
+        """Return existing cut-set modules that satisfy an operator relation."""
+        reference = self.registry.module(slot_id, base.as_mapping()[slot_id].module)
+        opposite = self._opposite_polarity(reference.polarity)
+        candidates = []
+        for module_id in cut_sets.get(slot_id, ()):
+            if module_id == reference.module_id:
+                continue
+            candidate = self.registry.module(slot_id, module_id)
+            if operator == "p1" and candidate.semantic_family != reference.semantic_family:
+                continue
+            if operator == "p2" and candidate.polarity != opposite:
+                continue
+            # p3 only requires a different existing executable module.
+            candidates.append(module_id)
+        return candidates
+
+    def _reuse_decision(self, operator: str, generation: int, parent_id: str) -> bool:
+        """Make a reproducible reuse/new decision independent of thread order."""
+        if not self.reuse_existing_modules or self.reuse_existing_probability <= 0.0:
+            return False
+        token = hashlib.sha256(
+            f"reuse|{generation}|{parent_id}|{operator}".encode("utf-8")
+        ).digest()
+        value = int.from_bytes(token[:8], "big") / float(1 << 64)
+        return value < self.reuse_existing_probability
+
+    def _reuse_existing_child(
+        self, operator: str, parent: ParticlePosition, base: ParticlePosition,
+        cut_sets: Mapping[str, list[str]], *, generation: int, parent_id: str,
+    ) -> ChildProposal | None:
+        """Prefer one existing typed module before asking for a new module.
+
+        The reuse prompt uses one LLM sequence-selection call.  If that call
+        is malformed or unavailable, a deterministic valid module is selected
+        from the same cut set, so reuse never adds a retry or a failed child.
+        Returning ``None`` means this parent/operator takes the original
+        description -> implementation path.
+        """
+        if operator not in {"p1", "p2", "p3"}:
+            return None
+
+        eligible_slots = [
+            slot_id for slot_id in self.registry.slot_ids
+            if self._reuse_candidates(operator, base, cut_sets, slot_id)
+        ]
+        if not eligible_slots:
+            return None
+        with self._reuse_stats_lock:
+            self.reuse_stats["eligible"] += 1
+        if not self._reuse_decision(operator, generation, parent_id):
+            return None
+
+        with self._reuse_stats_lock:
+            self.reuse_stats["attempted"] += 1
+        slot_id = eligible_slots[
+            (generation + sum(ord(ch) for ch in parent_id)) % len(eligible_slots)
+        ]
+        candidates = self._reuse_candidates(operator, base, cut_sets, slot_id)
+        allowed = {
+            slot: [base.as_mapping()[slot].module]
+            for slot in self.registry.slot_ids
+        }
+        allowed[slot_id] = list(candidates)
+        reference = self.registry.module(slot_id, base.as_mapping()[slot_id].module)
+        relation = (
+            "the same semantic family" if operator == "p1"
+            else "the opposite polarity" if operator == "p2"
+            else "a different executable recipe"
+        )
+        prompt = (
+            "REUSE_EXISTING_SEQUENCE phase. Return JSON only as "
+            '{"sequence":[{"slot":"...","module":"...","params":{}}]}. '
+            "Reuse an existing module; do not invent a module, description, recipe, "
+            "or Python code. Change exactly one module slot and preserve all other "
+            f"module IDs and parameters. For slot {slot_id}, choose an existing "
+            f"candidate with {relation} relative to {reference.module_id}. "
+            "Use the candidate module's default parameters.\n"
+            f"REFERENCE_SEQUENCE:\n{self._position_prompt('BASE_SEQUENCE', base)}\n"
+            f"CUT_SET_MODULES_WITH_EXECUTABLE_CODE:\n{self._cut_prompt(allowed)}"
+        )
+        try:
+            position, calls = self._retry_sequence(
+                prompt, allowed, generation, f"{operator}_reuse", max_retries=0
+            )
+            selected = position.as_mapping()[slot_id]
+            if selected.module not in candidates:
+                raise RuntimeError("reuse selector chose a non-candidate module")
+            mapping = base.as_mapping().copy()
+            mapping[slot_id] = ModuleChoice.create(
+                slot_id, selected.module,
+                self.registry.module(slot_id, selected.module).default_params(),
+            )
+            position = self.registry.validate_position(
+                ParticlePosition(tuple(mapping[slot] for slot in self.registry.slot_ids))
+            )
+            with self._reuse_stats_lock:
+                self.reuse_stats["llm_selected"] += 1
+            return ChildProposal(
+                operator=operator,
+                position=position,
+                set_position=None,
+                base_position=base,
+                prompt_ids=[f"reuse-existing:{operator}", *calls],
+            )
+        except Exception:
+            # No additional LLM retry: preserve runtime and guarantee a legal
+            # reused child whenever the cut set contains a valid candidate.
+            digest = hashlib.sha256(
+                f"reuse-fallback|{generation}|{parent_id}|{operator}|{slot_id}".encode("utf-8")
+            ).digest()
+            selected_id = candidates[int.from_bytes(digest[:8], "big") % len(candidates)]
+            mapping = base.as_mapping().copy()
+            mapping[slot_id] = ModuleChoice.create(
+                slot_id, selected_id,
+                self.registry.module(slot_id, selected_id).default_params(),
+            )
+            position = self.registry.validate_position(
+                ParticlePosition(tuple(mapping[slot] for slot in self.registry.slot_ids))
+            )
+            with self._reuse_stats_lock:
+                self.reuse_stats["deterministic_fallback"] += 1
+            return ChildProposal(
+                operator=operator,
+                position=position,
+                set_position=None,
+                base_position=base,
+                prompt_ids=[f"deterministic-reuse:{operator}"],
+            )
 
     def _position_prompt(self, label: str, position: ParticlePosition) -> str:
         items = []
@@ -407,10 +575,11 @@ class TSPModuleEvolution:
         allowed = {slot: list(ids) for slot, ids in cut_sets.items()}
         return self._retry_sequence(prompt, allowed, generation, operator)
 
-    def _retry_sequence(self, prompt, allowed, generation, operator):
+    def _retry_sequence(self, prompt, allowed, generation, operator, max_retries=None):
         def validate(response):
             return self._parse_sequence(response, allowed)
-        position, _response, call_id = self.llm.retry(prompt, validate, generation=generation, operator=operator, max_retries=self.max_retries)
+        retries = self.max_retries if max_retries is None else int(max_retries)
+        position, _response, call_id = self.llm.retry(prompt, validate, generation=generation, operator=operator, max_retries=retries)
         return position, [call_id]
 
     def _description_and_recipe(self, slot_id: str, operator: str, reference: ModuleSpec, context: str, generation: int) -> tuple[ModuleProposal, list[str]]:
@@ -494,6 +663,153 @@ class TSPModuleEvolution:
     def base_sequence(self, cut_sets, *, generation, parent_id):
         return self.generate_sequence(cut_sets, generation=generation, operator="p0", extra=f"BASE_SEQUENCE for parent {parent_id}; do not inspect the old parent sequence.")
 
+    @staticmethod
+    def _parameter_candidates(spec: ParameterSpec, current: Any) -> list[Any]:
+        """Return a small deterministic set of valid alternative values."""
+        values = []
+
+        def add(value):
+            try:
+                value = spec.validate(value)
+            except Exception:
+                return
+            if value != current and value not in values:
+                values.append(value)
+
+        if spec.kind == "choice":
+            for value in spec.choices:
+                add(value)
+        elif spec.kind == "int":
+            add(current - 1)
+            add(current + 1)
+            if spec.minimum is not None:
+                add(int(spec.minimum))
+            if spec.maximum is not None:
+                add(int(spec.maximum))
+            if spec.minimum is not None and spec.maximum is not None:
+                add(int(round((spec.minimum + spec.maximum) / 2)))
+        elif spec.kind == "float":
+            add(float(current) - 0.1)
+            add(float(current) + 0.1)
+            if spec.minimum is not None:
+                add(float(spec.minimum))
+            if spec.maximum is not None:
+                add(float(spec.maximum))
+            if spec.minimum is not None and spec.maximum is not None:
+                add((float(spec.minimum) + float(spec.maximum)) / 2.0)
+        return values
+
+    def _fallback_new_module(
+        self, slot_id: str, operator: str, reference: ModuleSpec, generation: int
+    ) -> ModuleProposal | None:
+        """Build a legal new typed module when the LLM protocol is invalid.
+
+        The LLM remains the primary proposal source.  This adapter-owned
+        fallback keeps an operator batch productive when a provider returns
+        malformed JSON or repeats an existing recipe.
+        """
+        opposite = self._opposite_polarity(reference.polarity)
+        templates = []
+        for template in self.registry.slot(slot_id).modules:
+            if operator == "p1" and template.semantic_family != reference.semantic_family:
+                continue
+            if operator == "p2" and template.polarity != opposite:
+                continue
+            templates.append(template)
+        templates.sort(key=lambda item: (item.module_id == reference.module_id, item.module_id))
+
+        existing = {
+            (str(item.recipe.get("kind")), tuple(sorted(item.default_params().items())))
+            for item in self.registry.slot(slot_id).modules
+        }
+        for template in templates:
+            defaults = template.default_params()
+            variants = [defaults]
+            for parameter in template.parameters:
+                current = defaults.get(parameter.name, parameter.default)
+                for value in self._parameter_candidates(parameter, current):
+                    candidate = dict(defaults)
+                    candidate[parameter.name] = value
+                    variants.append(candidate)
+            for values in variants:
+                signature = (
+                    str(template.recipe.get("kind")),
+                    tuple(sorted(values.items())),
+                )
+                if signature in existing:
+                    continue
+                specs = tuple(
+                    replace(parameter, default=values[parameter.name])
+                    for parameter in template.parameters
+                )
+                recipe = {
+                    "kind": str(template.recipe.get("kind")),
+                    "family": template.semantic_family,
+                    "polarity": template.polarity,
+                    "parameters": dict(values),
+                }
+                description = (
+                    f"Deterministic {operator} fallback using {recipe['kind']} "
+                    "with a validated alternative parameterization."
+                )
+                return ModuleProposal(
+                    slot=slot_id,
+                    description=description,
+                    recipe=recipe,
+                    parameters=specs,
+                    source_operator=operator,
+                    relation=("similar" if operator == "p1" else "opposite" if operator == "p2" else "revised"),
+                    reference_module=reference.module_id,
+                )
+        return None
+
+    def _fallback_parameter_position(self, base: ParticlePosition) -> ParticlePosition | None:
+        """Change one bounded parameter while preserving every module ID."""
+        mapping = base.as_mapping()
+        for slot_id in self.registry.slot_ids:
+            choice = mapping[slot_id]
+            spec = self.registry.module(slot_id, choice.module)
+            current = choice.params_dict()
+            for parameter in spec.parameters:
+                for value in self._parameter_candidates(
+                    parameter, current.get(parameter.name, parameter.default)
+                ):
+                    params = dict(current)
+                    params[parameter.name] = value
+                    candidate = dict(mapping)
+                    candidate[slot_id] = ModuleChoice.create(slot_id, choice.module, params)
+                    try:
+                        position = self.registry.validate_position(
+                            ParticlePosition(tuple(candidate[slot] for slot in self.registry.slot_ids))
+                        )
+                        if self.compiler.compile(position)[0] != self.compiler.compile(base)[0]:
+                            return position
+                    except Exception:
+                        continue
+        return None
+
+    def _fallback_existing_position(
+        self, operator: str, base: ParticlePosition, cut_sets: Mapping[str, list[str]]
+    ) -> ParticlePosition | None:
+        """Last-resort legal sequence change using the current cut sets."""
+        for slot_id in self.registry.slot_ids:
+            reference = self.registry.module(slot_id, base.as_mapping()[slot_id].module)
+            opposite = self._opposite_polarity(reference.polarity)
+            for module_id in cut_sets.get(slot_id, ()):
+                if module_id == reference.module_id:
+                    continue
+                candidate = self.registry.module(slot_id, module_id)
+                if operator == "p1" and candidate.semantic_family != reference.semantic_family:
+                    continue
+                if operator == "p2" and candidate.polarity != opposite:
+                    continue
+                mapping = base.as_mapping().copy()
+                mapping[slot_id] = ModuleChoice.create(slot_id, module_id, candidate.default_params())
+                return self.registry.validate_position(
+                    ParticlePosition(tuple(mapping[slot] for slot in self.registry.slot_ids))
+                )
+        return None
+
     def propose(self, operator: str, parent: ParticlePosition, base: ParticlePosition, cut_sets: Mapping[str, list[str]], *, generation: int, parent_id: str) -> ChildProposal:
         operator = operator.lower()
         if operator == "p0":
@@ -501,6 +817,12 @@ class TSPModuleEvolution:
             return ChildProposal(operator, position, None, base_position=position, prompt_ids=calls)
         if operator not in {"p1", "p2", "p3", "p4"}:
             raise ValueError(f"unknown heuristic operator {operator}")
+        reused = self._reuse_existing_child(
+            operator, parent, base, cut_sets,
+            generation=generation, parent_id=parent_id,
+        )
+        if reused is not None:
+            return reused
         if operator == "p4":
             allowed = {slot: list(ids) for slot, ids in cut_sets.items()}
             extra = self._position_prompt("BASE_SEQUENCE", base)
@@ -509,15 +831,21 @@ class TSPModuleEvolution:
                 "but change at least one bounded parameter. Do not introduce modules or Python.\n"
                 f"CUT_SET_MODULES_WITH_EXECUTABLE_CODE:\n{self._cut_prompt(cut_sets)}\n" + extra
             )
-            position, calls = self._retry_sequence(prompt, allowed, generation, "p4")
-            if all(position.as_mapping()[slot].params == base.as_mapping()[slot].params for slot in self.registry.slot_ids):
-                raise RuntimeError("p4 did not change a parameter")
-            if any(position.as_mapping()[slot].module != base.as_mapping()[slot].module for slot in self.registry.slot_ids):
-                raise RuntimeError("p4 changed a module ID")
-            before = self.compiler.compile(base)[0]
-            after = self.compiler.compile(position)[0]
-            if before == after:
-                raise RuntimeError("p4 parameter change did not change compiled source")
+            try:
+                position, calls = self._retry_sequence(prompt, allowed, generation, "p4")
+                if all(position.as_mapping()[slot].params == base.as_mapping()[slot].params for slot in self.registry.slot_ids):
+                    raise RuntimeError("p4 did not change a parameter")
+                if any(position.as_mapping()[slot].module != base.as_mapping()[slot].module for slot in self.registry.slot_ids):
+                    raise RuntimeError("p4 changed a module ID")
+                before = self.compiler.compile(base)[0]
+                after = self.compiler.compile(position)[0]
+                if before == after:
+                    raise RuntimeError("p4 parameter change did not change compiled source")
+            except Exception:
+                position = self._fallback_parameter_position(base)
+                if position is None:
+                    raise RuntimeError("p4 has no valid bounded parameter variation")
+                calls = ["adapter-fallback:p4"]
             return ChildProposal(operator, position, None, base_position=base, prompt_ids=calls)
 
         reference = base
@@ -530,7 +858,16 @@ class TSPModuleEvolution:
         slot_id = slots[(generation + sum(ord(ch) for ch in parent_id)) % len(slots)]
         ref_choice = reference.as_mapping()[slot_id]
         ref_spec = self.registry.module(slot_id, ref_choice.module)
-        proposal, calls = self._description_and_recipe(slot_id, operator, ref_spec, context, generation)
+        try:
+            proposal, calls = self._description_and_recipe(slot_id, operator, ref_spec, context, generation)
+        except Exception as error:
+            proposal = self._fallback_new_module(slot_id, operator, ref_spec, generation)
+            calls = [f"adapter-fallback:{operator}"]
+            if proposal is None:
+                position = self._fallback_existing_position(operator, base, cut_sets)
+                if position is None:
+                    raise RuntimeError(f"{operator} could not construct a legal fallback") from error
+                return ChildProposal(operator, position, None, base_position=base, prompt_ids=calls)
         if operator == "p1":
             if proposal.recipe.get("family") != ref_spec.semantic_family:
                 raise RuntimeError("p1 proposal is not in the declared similar semantic family")
@@ -542,6 +879,8 @@ class TSPModuleEvolution:
         if proposed_signature == reference_signature:
             raise RuntimeError(f"{operator} did not change the executable implementation")
         proposal.module_id = f"llm_{slot_id}_{hashlib.sha256(json.dumps({'kind': proposal.recipe['kind'], 'parameters': [p.to_dict() for p in proposal.parameters]}, sort_keys=True, default=str).encode()).hexdigest()[:12]}"
+        with self._reuse_stats_lock:
+            self.reuse_stats["new_module"] += 1
         mapping = base.as_mapping().copy()
         mapping[slot_id] = ModuleChoice.create(slot_id, proposal.module_id, proposal.recipe.get("parameters", {}))
         return ChildProposal(operator, ParticlePosition(tuple(mapping[slot] for slot in self.registry.slot_ids)), None, [proposal], base, calls)
