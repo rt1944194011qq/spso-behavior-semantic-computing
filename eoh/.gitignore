@@ -6,3 +6,4 @@
 .DS_Store
 .vscode/
 output.log
+examples/tsp_gls_numba/results_mae/
