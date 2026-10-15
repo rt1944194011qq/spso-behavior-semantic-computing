@@ -11,7 +11,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from .models import CutItem, ProgramIndividual
+from .models import CutItem, ExperienceRecord, ProgramIndividual
 
 logger = logging.getLogger("eoh.mae")
 
@@ -30,6 +30,22 @@ class ProgramDraft:
 
 class ProgramGenerator(Protocol):
     def generate_h0(self, agent_id: int, sample_index: int) -> ProgramDraft: ...
+
+    def describe_difference(
+        self,
+        agent_id: int,
+        source: ProgramIndividual,
+        target: ProgramIndividual,
+        direction_type: str = "improve",
+    ) -> str | None: ...
+
+    def apply_experience(
+        self,
+        agent_id: int,
+        current: ProgramIndividual,
+        experience: ExperienceRecord,
+        exemplar: ProgramIndividual,
+    ) -> ProgramDraft: ...
 
     def select_cut(
         self,
@@ -64,6 +80,8 @@ class LLMProgramGenerator:
         trace_path: str | Path | None = None,
         record_full_prompts: bool = True,
         record_full_responses: bool = True,
+        variation_instructions: dict[str, str] | None = None,
+        input_contract: str | None = None,
     ) -> None:
         self.llm = llm
         self.task_description = task_description
@@ -73,6 +91,8 @@ class LLMProgramGenerator:
         self.trace_path = Path(trace_path) if trace_path else None
         self.record_full_prompts = record_full_prompts
         self.record_full_responses = record_full_responses
+        self.variation_instructions = dict(variation_instructions or {})
+        self.input_contract = input_contract.strip() if input_contract else ""
         self._trace_lock = threading.Lock()
 
     def _trace(self, call_type: str, prompt: str, response: str | None, attempt: int) -> None:
@@ -173,10 +193,14 @@ class LLMProgramGenerator:
         )
 
     def _contract(self) -> str:
+        input_policy = (
+            f"Input-mutation policy:\n{self.input_contract}\n\n"
+            if self.input_contract else ""
+        )
         return (
             f"Task:\n{self.task_description}\n\n"
             "The result must implement exactly this template and preserve its function name, "
-            f"arguments, and return contract:\n{self.template_program}\n\n"
+            f"arguments, and return contract:\n{self.template_program}\n\n{input_policy}"
             "Return exactly two parts: first one concise algorithm description inside braces; "
             "then the complete Python code. Do not return tests or explanatory prose after the code."
         )
@@ -185,11 +209,69 @@ class LLMProgramGenerator:
         prompt = (
             f"You are initializing agent {agent_id}, sample {sample_index}, in a multi-agent "
             "heuristic evolution system. Design a valid and distinct GLS heuristic without "
-            "copying a supplied parent. Prefer simple vectorized numerical operations and make "
-            "a fresh output matrix instead of modifying inputs.\n\n"
+            "copying a supplied parent. Prefer simple vectorized numerical operations and return "
+            "a fresh output matrix. Follow the task's input-mutation policy.\n\n"
             + self._contract()
         )
         return self._call_code(prompt, "H0")
+
+    def describe_difference(
+        self,
+        agent_id: int,
+        source: ProgramIndividual,
+        target: ProgramIndividual,
+        direction_type: str = "improve",
+    ) -> str | None:
+        """Extract a portable, directional behavior change, not a textual diff."""
+        goal = (
+            "Describe in one concise actionable sentence how to change the source "
+            "program's behavior toward the demonstrably better target. "
+            if direction_type == "improve" else
+            "The target is not known to be better. Describe in one concise actionable "
+            "sentence a complementary behavior to borrow from the target while "
+            "preserving the source program's strengths; do not claim it improves fitness. "
+        )
+        prompt = (
+            f"Agent {agent_id}: compare two complete programs for this task. "
+            + goal + "Focus on the "
+            "algorithmic change, not variable names or line numbers. Do not return code.\n\n"
+            f"Task: {self.task_description}\n\n"
+            f"Source (fitness={source.fitness}):\n{source.description}\n{source.code}\n\n"
+            f"Target (fitness={target.fitness}):\n{target.description}\n{target.code}"
+        )
+        for attempt in range(1, self.retries + 1):
+            try:
+                response = self.llm.get_response(prompt)
+            except Exception:
+                response = None
+            self._trace("difference", prompt, response, attempt)
+            if response:
+                sentence = " ".join(response.strip().split())[:700]
+                if len(sentence) >= 8 and "```" not in sentence:
+                    return sentence
+        return None
+
+    def apply_experience(
+        self,
+        agent_id: int,
+        current: ProgramIndividual,
+        experience: ExperienceRecord,
+        exemplar: ProgramIndividual,
+    ) -> ProgramDraft:
+        prompt = (
+            f"Agent {agent_id}: apply this historical, directional experience to the "
+            "CURRENT complete program. Adapt the change to the current code rather than "
+            "copying a stale patch. If part of the behavior is already present, make a "
+            "meaningful distinct refinement while preserving the task contract.\n"
+            f"Experience source: {experience.source_role}; "
+            f"direction type: {experience.direction_type}; "
+            f"direction: {experience.difference_prompt}\n"
+            f"Reference exemplar description: {exemplar.description}\n\n"
+            f"Current description: {current.description}\n"
+            f"Current code:\n{current.code}\n\n"
+            + self._contract()
+        )
+        return self._call_code(prompt, "DIFF")
 
     @staticmethod
     def _cut_block(
@@ -285,7 +367,8 @@ class LLMProgramGenerator:
             )
         elif variation == "H5":
             instruction = (
-                "Treat the supplied parent as the most valuable candidate. Perform a STRICT "
+                "The supplied parent was randomly chosen from this generation's base pool. "
+                "Perform a STRICT "
                 "parameter-only mutation: copy the complete parent program and change only one "
                 "or more existing numeric literals. Do not add or remove imports, statements, "
                 "function calls, variables, branches, loops, array operations, or return logic. "
@@ -294,7 +377,9 @@ class LLMProgramGenerator:
                 "arguments, and return contract."
             )
         else:
-            return ProgramDraft(None, None, failure_stage="unknown_operator", failure_reason=variation)
+            instruction = self.variation_instructions.get(variation)
+            if not instruction:
+                return ProgramDraft(None, None, failure_stage="unknown_operator", failure_reason=variation)
 
         selected_descriptions = "\n".join(
             f"- {item.individual_id}: {item.description}" for item in selected

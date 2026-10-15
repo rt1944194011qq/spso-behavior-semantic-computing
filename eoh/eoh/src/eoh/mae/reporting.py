@@ -171,6 +171,12 @@ class ExperimentRecorder:
             config=config,
             problem_class=f"{type(problem).__module__}.{type(problem).__qualname__}",
             problem_timeout=getattr(problem, "timeout", None),
+            problem_dataset_path=getattr(problem, "datafile", None),
+            problem_dataset_sha256=getattr(problem, "dataset_sha256", None),
+            problem_instance_count=getattr(problem, "n_inst_eva", None),
+            problem_time_limit=getattr(problem, "time_limit", None),
+            problem_iteration_limit=getattr(problem, "ite_max", None),
+            problem_perturbation_moves=getattr(problem, "perturbation_moves", None),
         )
 
     def record_generation_metrics(self, record: dict[str, Any]) -> None:

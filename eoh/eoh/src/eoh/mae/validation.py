@@ -12,6 +12,16 @@ from ..problem import _get_entry_name
 from .models import ValidationResult
 
 
+TSP_INPUT_MUTATION_POLICY_ID = "eoh-edge-history-v1"
+TSP_INPUT_CONTRACT = (
+    "Treat edge_distance and local_opt_tour as read-only inputs. "
+    "You may update edge_n_used in place: it is the current instance's "
+    "persistent GLS history, and the GLS host also updates it after this call. "
+    "Updating this history is optional. Return the modified distances in a "
+    "fresh matrix; do not overwrite the original distance matrix or tour."
+)
+
+
 class _NumericConstantNormalizer(ast.NodeTransformer):
     def visit_Constant(self, node):
         if isinstance(node.value, (int, float, complex)) and not isinstance(node.value, bool):
@@ -137,7 +147,14 @@ class ProgramValidator:
 def make_tsp_smoke_test(
     require_symmetric: bool = True,
     require_nonnegative: bool = True,
+    *,
+    allow_edge_n_used_update: bool = True,
 ) -> Callable[[Callable], None]:
+    """Keep problem inputs read-only, but allow EoH-style GLS history updates.
+
+    The history belongs to one solve and is passed directly to the heuristic
+    by the GLS host. The opt-out preserves the old rule for explicit ablations.
+    """
     def smoke_test(function: Callable) -> None:
         distance = np.array(
             [[0.0, 1.0, 2.0, 3.0], [1.0, 0.0, 1.5, 2.5],
@@ -148,12 +165,13 @@ def make_tsp_smoke_test(
         used = np.zeros_like(distance)
         before_distance = copy.deepcopy(distance)
         before_tour = copy.deepcopy(tour)
-        before_used = copy.deepcopy(used)
+        before_used = copy.deepcopy(used) if not allow_edge_n_used_update else None
 
         result = np.asarray(function(distance, tour, used), dtype=float)
         assert np.array_equal(distance, before_distance), "edge_distance was modified in place"
         assert np.array_equal(tour, before_tour), "local_opt_tour was modified in place"
-        assert np.array_equal(used, before_used), "edge_n_used was modified in place"
+        if not allow_edge_n_used_update:
+            assert np.array_equal(used, before_used), "edge_n_used was modified in place"
         assert result.shape == distance.shape, f"expected shape {distance.shape}, got {result.shape}"
         assert np.all(np.isfinite(result)), "output contains NaN or Inf"
         if require_nonnegative:

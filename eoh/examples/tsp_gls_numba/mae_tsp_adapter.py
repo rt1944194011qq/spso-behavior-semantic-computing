@@ -8,7 +8,7 @@ import time
 import numpy as np
 
 from eoh.mae.generator import ProgramDraft
-from eoh.mae.models import CutItem, ProgramIndividual
+from eoh.mae.models import CutItem, ExperienceRecord, ProgramIndividual
 from eoh.mae.validation import (
     ProgramValidator,
     make_tsp_smoke_test,
@@ -63,12 +63,16 @@ class TracedTSPGLS(TSPGLS):
         }
 
 
-def build_tsp_validator(problem, *, require_symmetric=True, require_nonnegative=True):
+def build_tsp_validator(
+    problem, *, require_symmetric=True, require_nonnegative=True,
+    allow_edge_n_used_update=True,
+):
     return ProgramValidator(
         problem.template_program,
         smoke_test=make_tsp_smoke_test(
             require_symmetric=require_symmetric,
             require_nonnegative=require_nonnegative,
+            allow_edge_n_used_update=allow_edge_n_used_update,
         ),
     )
 
@@ -121,6 +125,37 @@ class OfflineTSPGenerator:
             ),
             code=self._code(scale, index),
             prompt_hash=f"offline-h0-{index}",
+        )
+
+    def describe_difference(
+        self,
+        agent_id: int,
+        source: ProgramIndividual,
+        target: ProgramIndividual,
+        direction_type: str = "improve",
+    ) -> str:
+        return (
+            f"Adapt the edge-penalty strength and update pattern of {source.individual_id} "
+            f"toward a {direction_type} alternative from {target.individual_id}."
+        )
+
+    def apply_experience(
+        self,
+        agent_id: int,
+        current: ProgramIndividual,
+        experience: ExperienceRecord,
+        exemplar: ProgramIndividual,
+    ) -> ProgramDraft:
+        index, scale = self._next(
+            "DIFF", agent_id, current.code_hash, experience.experience_id
+        )
+        return ProgramDraft(
+            description=(
+                f"Offline difference candidate {index} uses {experience.source_role} "
+                f"experience with penalty scale {scale:.4f}."
+            ),
+            code=self._code(scale, index),
+            prompt_hash=f"offline-diff-{index}",
         )
 
     def select_cut(

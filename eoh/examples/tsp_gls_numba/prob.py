@@ -370,13 +370,16 @@ def update_edge_distance(edge_distance: np.ndarray, local_opt_tour: np.ndarray,
 
     def __init__(self, n_inst_eva: int = 3, time_limit: float = 10.0,
                  ite_max: int = 1000, perturbation_moves: int = 1,
-                 timeout: int = 60, n_processes: int = 1):
+                 timeout: int = 60, n_processes: int = 1,
+                 datafile=None):
         super().__init__(timeout=timeout, n_processes=n_processes)
         self.n_inst_eva = n_inst_eva
         self.time_limit = time_limit
         self.ite_max = ite_max
         self.perturbation_moves = perturbation_moves
-        self.coords, self.instances, self.opt_costs = GetData(n_inst_eva).load_instances()
+        loader = GetData(n_inst_eva, datafile=datafile)
+        self.datafile = loader.datafile
+        self.coords, self.instances, self.opt_costs = loader.load_instances()
 
     def evaluate_program(self, program_str: str, callable_func) -> float | None:
         gaps = np.zeros(self.n_inst_eva)
