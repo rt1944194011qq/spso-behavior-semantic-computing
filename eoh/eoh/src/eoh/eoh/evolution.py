@@ -13,8 +13,10 @@ import sys
 import signal
 import logging
 import threading
+import time
 import warnings
 import multiprocessing
+from queue import Empty
 
 import numpy as np
 
@@ -81,7 +83,7 @@ def _kill_process_tree(p):
         p.join(5)
 
 
-def _eval_with_timeout(problem, code, timeout):
+def _eval_with_timeout(problem, code, timeout, *, report_failures=False):
     """Run evaluate() in a subprocess and enforce a hard per-eval timeout.
 
     Module-level so it can be pickled by joblib/loky when called from a
@@ -100,15 +102,45 @@ def _eval_with_timeout(problem, code, timeout):
             multiprocessing.set_start_method('spawn', force=True)
     q = _MP_CTX.Queue()
     p = _MP_CTX.Process(target=_eval_worker, args=(q, problem, code))
-    p.start()
-    p.join(timeout)
-    if p.is_alive():
-        _kill_process_tree(p)
+    deadline = time.monotonic() + timeout
+    def failed(stage, reason, **details):
+        if report_failures:
+            return {"fitness": None, "details": {"failure": {
+                "stage": stage, "reason": reason, **details,
+            }}}
         return None
+
     try:
-        return q.get_nowait()
-    except Exception:
-        return None
+        p.start()
+        # Drain the result BEFORE joining. A traced 200-instance result can
+        # exceed the pipe buffer; join-before-get deadlocks the child's Queue
+        # feeder and makes a finished evaluation look like a timeout.
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                _kill_process_tree(p)
+                return failed("evaluation_timeout", "whole-candidate evaluation exceeded its deadline",
+                              timeout_seconds=timeout)
+            try:
+                result = q.get(timeout=min(0.25, remaining))
+                p.join(min(1.0, max(0.0, deadline - time.monotonic())))
+                if p.is_alive():
+                    _kill_process_tree(p)
+                return result if result is not None else failed(
+                    "evaluation_failure", "evaluation returned None"
+                )
+            except Empty:
+                if not p.is_alive():
+                    return failed("evaluation_process_exit", "worker exited without a result",
+                                  exit_code=p.exitcode)
+    finally:
+        if p.pid is not None:
+            if p.is_alive():
+                _kill_process_tree(p)
+            p.join(1)
+            p.close()
+        q.close()
+        q.join_thread()
 
 
 from ..llm.interface_LLM import InterfaceLLM

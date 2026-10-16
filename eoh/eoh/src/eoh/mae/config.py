@@ -7,7 +7,7 @@ from typing import Any
 
 @dataclass
 class MAEConfig:
-    """Configuration for synchronous multi-agent heuristic evolution."""
+    """Configuration for multi-agent heuristic evolution."""
 
     num_agents: int = 10
     # The semantic-memory engine keeps exactly one complete program per agent.
@@ -41,7 +41,10 @@ class MAEConfig:
     neighbor_reserved_slots: int = 1
     h1_selection_boost: float = 1.5
     h2_selection_boost: float = 1.5
-    enabled_operators: tuple[str, ...] = ("H1", "H2", "H3", "H4", "H5")
+    # Cosine schedule: expected H1 share moves from 80% to 20% of agents.
+    h1_probability_start: float = 0.80
+    h1_probability_end: float = 0.20
+    enabled_operators: tuple[str, ...] = ("H1", "H2", "H3", "H4", "H5", "H6")
     variation_parent_counts: dict[str, int] | None = None
 
     variation_operators: tuple[str, ...] = ("H3", "H4", "H5")
@@ -51,6 +54,9 @@ class MAEConfig:
     num_llm_workers: int = 8
     num_evaluators: int = 8
     isolate_evaluation: bool = True
+    # Candidate generation and evaluation overlap; each agent advances its
+    # own ordered operators without waiting for the other agents.
+    async_pipeline: bool = True
 
     require_description: bool = True
     require_symmetric_output: bool = True
@@ -98,14 +104,23 @@ class MAEConfig:
             raise ValueError("neighbor_reserved_slots must be below cut_target_size")
         if self.h1_selection_boost < 1 or self.h2_selection_boost < 1:
             raise ValueError("H1/H2 selection boosts must be >= 1")
+        if not 0 <= self.h1_probability_end <= self.h1_probability_start <= 1:
+            raise ValueError("H1 schedule must satisfy 0 <= end <= start <= 1")
         if len(set(self.enabled_operators)) != len(self.enabled_operators):
             raise ValueError("enabled_operators must not contain duplicates")
+        if self.position_size == 1 and not set(self.enabled_operators).intersection({"H1", "H2"}):
+            raise ValueError("semantic evolution needs H1 or H2 guidance")
         if "H0" in self.enabled_operators:
             raise ValueError("H0 is an automatic initializer/fallback, not an enabled operator")
         if self.variation_parent_counts is not None:
             if any(count < 1 for count in self.variation_parent_counts.values()):
                 raise ValueError("variation parent counts must be positive")
-        missing_arity = set(self.enabled_operators) - {"H1", "H2", "H3", "H4", "H5"}
+            if self.position_size == 1:
+                fixed = {"H3": 2, "H4": 2, "H5": 1, "H6": 1}
+                for name, count in self.variation_parent_counts.items():
+                    if name in fixed and count != fixed[name]:
+                        raise ValueError(f"{name} requires {fixed[name]} parent(s)")
+        missing_arity = set(self.enabled_operators) - {"H1", "H2", "H3", "H4", "H5", "H6"}
         missing_arity -= set(self.variation_parent_counts or {})
         if missing_arity:
             raise ValueError(
@@ -117,7 +132,7 @@ class MAEConfig:
             raise ValueError("progress_log_every must be >= 1")
         if self.heartbeat_interval_seconds <= 0:
             raise ValueError("heartbeat_interval_seconds must be > 0")
-        allowed = {"H3", "H4", "H5"}
+        allowed = {"H3", "H4", "H5", "H6"}
         unknown = set(self.variation_operators) - allowed
         if unknown:
             raise ValueError(f"unknown variation operators: {sorted(unknown)}")
@@ -143,7 +158,7 @@ class MAEConfig:
                 "selection_size",
             ):
                 data.pop(legacy_only)
-            data["algorithm_version"] = "semantic-memory-v2"
+            data["algorithm_version"] = "semantic-memory-v4-async"
         else:
             data["variation_operators"] = list(self.variation_operators)
             data["algorithm_version"] = "legacy-multi-position-v1"

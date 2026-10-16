@@ -177,6 +177,9 @@ class ExperimentRecorder:
             problem_time_limit=getattr(problem, "time_limit", None),
             problem_iteration_limit=getattr(problem, "ite_max", None),
             problem_perturbation_moves=getattr(problem, "perturbation_moves", None),
+            problem_numba_heuristic=getattr(problem, "numba_heuristic", None),
+            problem_require_numba=getattr(problem, "require_numba", None),
+            problem_max_heuristic_call_seconds=getattr(problem, "max_heuristic_call_seconds", None),
         )
 
     def record_generation_metrics(self, record: dict[str, Any]) -> None:
@@ -188,7 +191,8 @@ class ExperimentRecorder:
                 "generation", "best_fitness", "population_mean", "population_std",
                 "population_min", "population_max", "generated_candidates",
                 "valid_candidates", "valid_rate", "surviving_candidates",
-                "surviving_children",
+                "surviving_children", "retained_current", "admitted_by_path",
+                "h1_agents", "h2_agents",
                 "independent_evaluations", "cache_hits", "archive_size",
                 "generation_seconds", "generated_by_path", "valid_by_path",
                 "survived_by_path", "failures_by_stage",

@@ -100,10 +100,11 @@ class TSPInputContractTests(unittest.TestCase):
         exemplar = ProgramIndividual("b", "target", TEMPLATE, "hash-b", 1.0, True, 0, 0, "H0")
         experience = ExperienceRecord("e", "global", "a", "b", "Adapt penalties.", 1.0, 0.6, 1, 1)
         self.assertIsNotNone(generator.generate_h0(0, 0).code)
-        self.assertIsNotNone(generator.apply_experience(0, parent, experience, exemplar).code)
-        for operator in ("H3", "H4", "H5"):
-            generator.generate_variation(0, "H1+H2", operator, [parent, exemplar], [parent, exemplar])
-        self.assertEqual(len(llm.prompts), 5)
+        self.assertIsNotNone(generator.apply_experience(0, parent, experience, exemplar, "H2").code)
+        for operator in ("H3", "H4", "H5", "H6"):
+            parents = [parent, exemplar] if operator in {"H3", "H4"} else [parent]
+            generator.generate_variation(0, "H1", operator, parents, [parent, exemplar])
+        self.assertEqual(len(llm.prompts), 6)
         for prompt in llm.prompts:
             self.assertIn(TSP_INPUT_CONTRACT, prompt)
             self.assertNotIn("instead of modifying inputs", prompt)

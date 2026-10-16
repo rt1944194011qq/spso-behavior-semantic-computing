@@ -55,12 +55,12 @@ def aggregate_operators(
     records: list[dict[str, Any]], objective_direction: str
 ) -> list[dict[str, Any]]:
     totals: dict[str, dict[str, Any]] = defaultdict(lambda: {
-        "generated": 0, "valid": 0, "survived": 0,
+        "generated": 0, "valid": 0, "admitted": 0, "survived": 0,
         "recorded_failures": 0, "best_values": [],
     })
     for record in records:
         item = totals[str(record.get("operator_path"))]
-        for key in ("generated", "valid", "survived", "recorded_failures"):
+        for key in ("generated", "valid", "admitted", "survived", "recorded_failures"):
             item[key] += int(record.get(key) or 0)
         if record.get("best_fitness") is not None:
             item["best_values"].append(float(record["best_fitness"]))
@@ -74,6 +74,7 @@ def aggregate_operators(
             "operator_path": operator_path,
             **values,
             "valid_rate": valid / generated if generated else None,
+            "admission_rate_from_valid": values["admitted"] / valid if valid else None,
             "survival_rate_from_valid": values["survived"] / valid if valid else None,
             "best_fitness": (
                 (min(best_values) if objective_direction == "min" else max(best_values))
@@ -100,19 +101,21 @@ def aggregate_sources(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def aggregate_stages(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    durations: dict[str, list[float]] = defaultdict(list)
+    durations: dict[tuple[str, str], list[float]] = defaultdict(list)
     for record in records:
         if record.get("event") == "stage_finished" and record.get("stage"):
-            durations[str(record["stage"])].append(float(record["duration_seconds"]))
+            scope = "overlapping_agents" if record.get("asynchronous") else "phase_wall_time"
+            durations[str(record["stage"]), scope].append(float(record["duration_seconds"]))
     return [
         {
             "stage": stage,
+            "timing_scope": scope,
             "count": len(values),
             "total_seconds": sum(values),
             "mean_seconds": statistics.fmean(values),
             "max_seconds": max(values),
         }
-        for stage, values in sorted(durations.items())
+        for (stage, scope), values in sorted(durations.items())
     ]
 
 
@@ -129,6 +132,8 @@ def main() -> None:
     metadata = read_json(run_dir / "metadata.json")
     generations = read_jsonl(run_dir / "metrics" / "generation_metrics.jsonl")
     agents = read_jsonl(run_dir / "metrics" / "agent_metrics.jsonl")
+    pool_decisions = read_jsonl(run_dir / "metrics" / "pool_decisions.jsonl")
+    base_pools = read_jsonl(run_dir / "metrics" / "base_pools.jsonl")
     operators = read_jsonl(run_dir / "metrics" / "operator_metrics.jsonl")
     sources = read_jsonl(run_dir / "metrics" / "experience_source_metrics.jsonl")
     stages = read_jsonl(run_dir / "telemetry" / "stage_timings.jsonl")
@@ -150,6 +155,8 @@ def main() -> None:
     stage_summary = aggregate_stages(stages)
     write_csv(output_dir / "generations.csv", generations)
     write_csv(output_dir / "agents.csv", agents)
+    write_csv(output_dir / "pool_decisions.csv", pool_decisions)
+    write_csv(output_dir / "base_pools.csv", base_pools)
     write_csv(output_dir / "operators_by_generation.csv", operators)
     write_csv(output_dir / "operator_summary.csv", operator_summary)
     write_csv(output_dir / "experience_sources_by_generation.csv", sources)
@@ -170,6 +177,7 @@ def main() -> None:
         ),
         "cache_hits": latest.get("cache_hits") if latest else None,
         "latest_valid_rate": latest.get("valid_rate") if latest else None,
+        "latest_retained_current": latest.get("retained_current") if latest else None,
         "config": config,
         "dataset": {
             "path": environment.get("problem_dataset_path") if environment else None,

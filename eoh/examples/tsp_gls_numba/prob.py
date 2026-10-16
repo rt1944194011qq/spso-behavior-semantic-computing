@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'eoh', 's
 
 from eoh import BaseProblem
 from get_instance import GetData
+from heuristic_runtime import HeuristicExecutionError, prepare_heuristic
 
 
 # ── GLS engine (numba-jitted, as in the original EoH-0.1 implementation) ────────
@@ -317,6 +318,8 @@ def solve_instance(opt_cost, dis_matrix, time_limit, ite_max,
             first_improvement=False)
 
         gap = (best_cost / opt_cost - 1) * 100
+    except HeuristicExecutionError:
+        raise
     except Exception:
         gap = 1E10
         iter_i = 0
@@ -371,17 +374,34 @@ def update_edge_distance(edge_distance: np.ndarray, local_opt_tour: np.ndarray,
     def __init__(self, n_inst_eva: int = 3, time_limit: float = 10.0,
                  ite_max: int = 1000, perturbation_moves: int = 1,
                  timeout: int = 60, n_processes: int = 1,
-                 datafile=None):
+                 datafile=None, numba_heuristic: bool = False,
+                 max_heuristic_call_seconds: float = 0.0,
+                 require_numba: bool = False):
         super().__init__(timeout=timeout, n_processes=n_processes)
         self.n_inst_eva = n_inst_eva
         self.time_limit = time_limit
         self.ite_max = ite_max
         self.perturbation_moves = perturbation_moves
+        self.numba_heuristic = numba_heuristic
+        self.require_numba = require_numba
+        self.max_heuristic_call_seconds = max_heuristic_call_seconds
+        if max_heuristic_call_seconds < 0:
+            raise ValueError("max_heuristic_call_seconds must be nonnegative")
         loader = GetData(n_inst_eva, datafile=datafile)
         self.datafile = loader.datafile
         self.coords, self.instances, self.opt_costs = loader.load_instances()
 
+    def _prepare_heuristic(self, callable_func):
+        if not self.numba_heuristic and self.max_heuristic_call_seconds == 0:
+            return callable_func, {"execution": "python"}
+        return prepare_heuristic(
+            callable_func, self.instances[0], use_numba=self.numba_heuristic,
+            max_call_seconds=self.max_heuristic_call_seconds,
+            require_numba=getattr(self, "require_numba", True),
+        )
+
     def evaluate_program(self, program_str: str, callable_func) -> float | None:
+        callable_func, _runtime = self._prepare_heuristic(callable_func)
         gaps = np.zeros(self.n_inst_eva)
         for i in range(self.n_inst_eva):
             gaps[i], _ = solve_instance(

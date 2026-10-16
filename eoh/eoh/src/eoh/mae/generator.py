@@ -45,6 +45,7 @@ class ProgramGenerator(Protocol):
         current: ProgramIndividual,
         experience: ExperienceRecord,
         exemplar: ProgramIndividual,
+        guidance: str,
     ) -> ProgramDraft: ...
 
     def select_cut(
@@ -67,7 +68,7 @@ class ProgramGenerator(Protocol):
 
 
 class LLMProgramGenerator:
-    """Prompt and response adapter for H0-H5 complete-program generation."""
+    """Prompt and response adapter for H0-H6 complete-program generation."""
 
     def __init__(
         self,
@@ -257,9 +258,20 @@ class LLMProgramGenerator:
         current: ProgramIndividual,
         experience: ExperienceRecord,
         exemplar: ProgramIndividual,
+        guidance: str,
     ) -> ProgramDraft:
+        if guidance not in {"H1", "H2"}:
+            return ProgramDraft(None, None, failure_stage="unknown_operator", failure_reason=guidance)
+        focus = (
+            "Give extra attention to useful personal-best experience while preserving "
+            "the current program's working behavior."
+            if guidance == "H1" else
+            "Give extra attention to useful global-best experience while adapting it "
+            "to this agent's current program."
+        )
         prompt = (
-            f"Agent {agent_id}: apply this historical, directional experience to the "
+            f"Agent {agent_id} uses {guidance}. {focus} Apply this historical, "
+            "directional experience to the "
             "CURRENT complete program. Adapt the change to the current code rather than "
             "copying a stale patch. If part of the behavior is already present, make a "
             "meaningful distinct refinement while preserving the task contract.\n"
@@ -271,7 +283,7 @@ class LLMProgramGenerator:
             f"Current code:\n{current.code}\n\n"
             + self._contract()
         )
-        return self._call_code(prompt, "DIFF")
+        return self._call_code(prompt, guidance)
 
     @staticmethod
     def _cut_block(
@@ -357,17 +369,20 @@ class LLMProgramGenerator:
     ) -> ProgramDraft:
         if variation == "H3":
             instruction = (
-                "Find the useful common behavior of the two parents and create a new program "
-                "that is semantically similar to both, but is not a verbatim copy."
+                "These are the two best programs in the current evaluated pool. "
+                "Identify their common effective backbone, then create one new program "
+                "with similar algorithmic behavior. It must not be a verbatim copy of either parent."
             )
         elif variation == "H4":
             instruction = (
-                "Use the two parents only as contrastive references. Create a structurally or "
-                "semantically different exploration program while preserving the task contract."
+                "These are the two worst programs in the current evaluated pool. "
+                "Use them as contrastive examples: identify a likely weakness and propose "
+                "one new algorithm with a substantially different form from both parents. "
+                "Do not merely combine their weak behavior. Preserve the task contract."
             )
         elif variation == "H5":
             instruction = (
-                "The supplied parent was randomly chosen from this generation's base pool. "
+                "The supplied parent was randomly chosen from the current evaluated pool. "
                 "Perform a STRICT "
                 "parameter-only mutation: copy the complete parent program and change only one "
                 "or more existing numeric literals. Do not add or remove imports, statements, "
@@ -376,17 +391,26 @@ class LLMProgramGenerator:
                 "to the parent; only numeric values may differ. Preserve the exact function name, "
                 "arguments, and return contract."
             )
+        elif variation == "H6":
+            instruction = (
+                "The supplied parent was randomly chosen from the current evaluated pool. "
+                "Create one modified version by changing its internal algorithmic structure: "
+                "change at least one branch, loop, computation, or edge-update rule. "
+                "A numeric-literal-only change is insufficient. Keep the same function name, "
+                "arguments, output shape, and task input-mutation policy."
+            )
         else:
             instruction = self.variation_instructions.get(variation)
             if not instruction:
                 return ProgramDraft(None, None, failure_stage="unknown_operator", failure_reason=variation)
 
         selected_descriptions = "\n".join(
-            f"- {item.individual_id}: {item.description}" for item in selected
+            f"- {item.individual_id} (fitness={item.fitness}): {item.description}"
+            for item in selected
         )
         prompt = (
             f"Agent {agent_id} is using operator path {guidance}->{variation}.\n"
-            f"{instruction}\n\nSelected cut-set descriptions:\n{selected_descriptions}\n\n"
+            f"{instruction}\n\nCurrent evaluated pool descriptions:\n{selected_descriptions}\n\n"
             f"Parents:\n{self._parent_block(parents)}\n\n"
             + self._contract()
         )

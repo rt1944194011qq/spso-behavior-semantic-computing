@@ -15,12 +15,20 @@ from eoh.mae.validation import (
     structural_fingerprint,
 )
 from prob import TSPGLS, solve_instance
+from heuristic_runtime import HeuristicExecutionError
 
 
 class TracedTSPGLS(TSPGLS):
     """TSPGLS variant returning per-instance details to the MA-EoH logger."""
 
     def evaluate_program(self, program_str, callable_func):
+        try:
+            callable_func, runtime = self._prepare_heuristic(callable_func)
+            return self._evaluate_prepared(callable_func, runtime)
+        except HeuristicExecutionError as exc:
+            return {"fitness": None, "details": {"failure": exc.details}}
+
+    def _evaluate_prepared(self, callable_func, runtime):
         instances = []
         gaps = []
         evaluation_started = time.perf_counter()
@@ -53,6 +61,7 @@ class TracedTSPGLS(TSPGLS):
         return {
             "fitness": float(np.mean(gaps)),
             "details": {
+                "heuristic_runtime": runtime,
                 "instances": instances,
                 "instance_count": self.n_inst_eva,
                 "time_limit": self.time_limit,
@@ -145,17 +154,18 @@ class OfflineTSPGenerator:
         current: ProgramIndividual,
         experience: ExperienceRecord,
         exemplar: ProgramIndividual,
+        guidance: str,
     ) -> ProgramDraft:
         index, scale = self._next(
-            "DIFF", agent_id, current.code_hash, experience.experience_id
+            guidance, agent_id, current.code_hash, experience.experience_id
         )
         return ProgramDraft(
             description=(
-                f"Offline difference candidate {index} uses {experience.source_role} "
+                f"Offline {guidance} difference candidate {index} uses {experience.source_role} "
                 f"experience with penalty scale {scale:.4f}."
             ),
             code=self._code(scale, index),
-            prompt_hash=f"offline-diff-{index}",
+            prompt_hash=f"offline-{guidance}-diff-{index}",
         )
 
     def select_cut(
@@ -189,7 +199,7 @@ class OfflineTSPGenerator:
         index, scale = self._next(guidance, variation, agent_id, *(p.code_hash for p in parents))
         if variation == "H5":
             code = re.sub(r"\d+\.\d{4}", f"{scale:.4f}", parents[0].code, count=1)
-        elif variation == "H4":
+        elif variation in {"H4", "H6"}:
             parent_structures = {structural_fingerprint(parent.code) for parent in parents}
             code = None
             for mode in range(3):

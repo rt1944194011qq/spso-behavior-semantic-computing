@@ -1,19 +1,26 @@
 from __future__ import annotations
 
 import json
+import math
+import random
 import tempfile
 import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
 
 from eoh.mae import LLMProgramGenerator, MAEConfig, MAEEngine, ProgramDraft
-from eoh.mae.experience import birth_probability, calibrated_multiplier, decay_and_prune, sample_cut
+from eoh.mae.legacy_engine import _CandidateSpec
+from eoh.mae.experience import (
+    birth_probability, calibrated_multiplier, decay_and_prune, sample_cut,
+    scheduled_guidance,
+)
 from eoh.mae.models import ExperienceRecord, ProgramIndividual
 from eoh.mae.set_algebra import scalar_multiply, set_add, update_velocity
 from eoh.mae.topology import ring_neighbors
-from eoh.mae.validation import ProgramValidator
+from eoh.mae.validation import ProgramValidator, parameter_only_mutation
 from eoh.problem import BaseProblem
 
 
@@ -58,17 +65,95 @@ class FakeGenerator:
             f"{target.individual_id} as {direction_type}."
         )
 
-    def apply_experience(self, agent_id, current, experience, exemplar):
-        return self._draft(f"DIFF {experience.source_role} agent {agent_id}")
+    def apply_experience(self, agent_id, current, experience, exemplar, guidance):
+        return self._draft(f"{guidance} {experience.source_role} agent {agent_id}")
 
     def generate_variation(self, agent_id, guidance, variation, parents, selected):
         draft = self._draft(f"{guidance}->{variation} agent {agent_id}")
         if variation == "H4":
             draft.code = draft.code.replace("edge_distance.copy() +", "edge_distance.copy() + 2 *")
+        elif variation == "H6":
+            draft.code = draft.code.replace(
+                "return edge_distance.copy() +",
+                "return (edge_distance.copy() +",
+            ).rstrip() + ") * 1.0\n"
         return draft
 
 
+class ControlledGenerator(FakeGenerator):
+    """Make scored candidates so every admission stage can be inspected."""
+
+    def generate_h0(self, agent_id, sample_index):
+        with self._lock:
+            self._counter += 1
+            index = self._counter
+        value = 1.0 + index / 100.0
+        code = (
+            "def update_edge_distance(edge_distance, local_opt_tour, edge_n_used):\n"
+            f"    return edge_distance.copy() * {value:.4f}\n"
+        )
+        return ProgramDraft(f"H0 candidate {index}", code, f"h0-{index}")
+
+    def apply_experience(self, agent_id, current, experience, exemplar, guidance):
+        with self._lock:
+            self._counter += 1
+            index = self._counter
+        value = 0.6 + index / 10000.0
+        code = (
+            "def update_edge_distance(edge_distance, local_opt_tour, edge_n_used):\n"
+            f"    return edge_distance.copy() * {value:.4f}\n"
+        )
+        return ProgramDraft(f"{guidance} candidate {index}", code, f"base-{index}")
+
+    def generate_variation(self, agent_id, guidance, variation, parents, selected):
+        with self._lock:
+            if not hasattr(self, "calls"):
+                self.calls = []
+            self.calls.append((agent_id, variation, [p.individual_id for p in parents],
+                               [p.individual_id for p in selected]))
+        prefix = "def update_edge_distance(edge_distance, local_opt_tour, edge_n_used):\n"
+        if variation == "H3":
+            code = prefix + "    return edge_distance.copy() * 0.1000\n"
+        elif variation == "H4":
+            code = prefix + "    return (edge_distance.copy() * 0.2000) + 0.0\n"
+        elif variation == "H5":
+            code = parameter_only_mutation(
+                parents[0].code, seed=f"H5-{agent_id}-{parents[0].individual_id}"
+            )
+        elif variation == "H6":
+            code = prefix + "    return edge_distance.copy() / 100.0\n"
+        else:
+            raise AssertionError(variation)
+        return ProgramDraft(f"{variation} candidate", code, f"{variation}-{agent_id}")
+
+
 class SetAlgebraTests(unittest.TestCase):
+    def test_cosine_guidance_uses_one_operator_per_agent(self):
+        ids = list(range(10))
+        middle = 0.2 + 0.6 * (1 + math.cos(math.pi * 9 / 19)) / 2
+        expected = [(1, 0.8, 8), (10, middle, None), (20, 0.2, 2)]
+        for generation, probability, h1_count in expected:
+            assigned, actual = scheduled_guidance(
+                ids, generation=generation, total_generations=20,
+                start=0.8, end=0.2,
+                enabled_operators=("H1", "H2", "H3", "H4", "H5", "H6"),
+                rng=random.Random(2026),
+            )
+            self.assertAlmostEqual(actual, probability)
+            self.assertEqual(set(assigned), set(ids))
+            count = sum(value == "H1" for value in assigned.values())
+            if h1_count is None:
+                self.assertIn(count, (math.floor(10 * probability), math.ceil(10 * probability)))
+            else:
+                self.assertEqual(count, h1_count)
+            self.assertEqual(set(assigned.values()), {"H1", "H2"})
+            again, _ = scheduled_guidance(
+                ids, generation=generation, total_generations=20,
+                start=0.8, end=0.2,
+                enabled_operators=("H1", "H2"), rng=random.Random(2026),
+            )
+            self.assertEqual(assigned, again)
+
     def test_add_keeps_max_probability(self):
         self.assertEqual(set_add({"a": 0.2, "b": 0.8}, {"a": 0.7, "c": 0.4}),
                          {"a": 0.7, "b": 0.8, "c": 0.4})
@@ -164,13 +249,127 @@ class SetAlgebraTests(unittest.TestCase):
         experience = ExperienceRecord(
             "e", "global", "a", "b", difference, 1.0, 0.6, 1, 1
         )
-        draft = generator.apply_experience(0, first, experience, second)
+        draft = generator.apply_experience(0, first, experience, second, "H2")
         self.assertIsNotNone(draft.code)
         self.assertIn("def update_edge_distance", draft.code)
         self.assertTrue(draft.description)
 
+    def test_operator_prompts_include_eoh_style_goal_and_contract(self):
+        class CaptureLLM:
+            def __init__(self):
+                self.prompts = []
+
+            def get_response(self, prompt):
+                self.prompts.append(prompt)
+                return (
+                    "{Modify the edge update rule.}\n```python\n"
+                    "def update_edge_distance(edge_distance, local_opt_tour, edge_n_used):\n"
+                    "    return edge_distance.copy() * 0.5\n```"
+                )
+
+        llm = CaptureLLM()
+        code = FakeProblem.template_program
+        first = ProgramIndividual("a", "first strategy", code, "hash-a", 1.0, True, 0, 0, "H0")
+        second = ProgramIndividual("b", "second strategy", code, "hash-b", 2.0, True, 0, 0, "H0")
+        generator = LLMProgramGenerator(llm, FakeProblem.task_description, code)
+        phrases = {
+            "H3": "two best programs",
+            "H4": "two worst programs",
+            "H5": "STRICT parameter-only mutation",
+            "H6": "changing its internal algorithmic structure",
+        }
+        for variation, phrase in phrases.items():
+            parents = [first, second] if variation in {"H3", "H4"} else [first]
+            draft = generator.generate_variation(0, "H1", variation, parents, [first, second])
+            self.assertTrue(draft.code)
+            self.assertIn(phrase, llm.prompts[-1])
+            self.assertIn("return contract", llm.prompts[-1])
+            self.assertIn("description inside braces", llm.prompts[-1])
+
 
 class EngineIntegrationTests(unittest.TestCase):
+    def test_h6_rejects_parameter_only_change(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            problem = FakeProblem()
+            engine = MAEEngine(
+                MAEConfig(num_agents=1, generations=0, output_dir=temporary,
+                          isolate_evaluation=False),
+                problem, FakeGenerator(), ProgramValidator(problem.template_program),
+            )
+            prefix = "def update_edge_distance(edge_distance, local_opt_tour, edge_n_used):\n"
+            parent_code = prefix + "    return edge_distance.copy() * 0.1000\n"
+            child_code = prefix + "    return edge_distance.copy() * 0.2000\n"
+            parent = ProgramIndividual("parent", "existing", parent_code, "parent-hash",
+                                       0.1, True, 0, 0, "H0")
+            engine.archive[parent.individual_id] = parent
+            spec = _CandidateSpec(
+                agent_id=0, generation=1,
+                draft=ProgramDraft("changed only a literal", child_code),
+                source_operator="H6", guidance="H1", variation="H6",
+                parent_ids=[parent.individual_id],
+            )
+            try:
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    engine._eval_pool = pool
+                    self.assertEqual(engine._evaluate_specs([spec], {0: {parent.code_hash}}), [])
+                failures = (Path(temporary) / "failures" / "failures.jsonl").read_text(
+                    encoding="utf-8"
+                )
+                self.assertIn("similarity_violation", failures)
+            finally:
+                engine._close_logger()
+
+    def test_sequential_operator_pool_and_strict_replacement(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            problem = FakeProblem()
+            config = MAEConfig(
+                num_agents=3, generations=1, initial_multiplier=2,
+                num_llm_workers=3, num_evaluators=3,
+                isolate_evaluation=False, output_dir=temporary,
+                evaluation_fingerprint="controlled-sequential-v3",
+            )
+            generator = ControlledGenerator()
+            engine = MAEEngine(
+                config, problem, generator,
+                ProgramValidator(problem.template_program),
+            )
+            engine.run()
+            root = Path(temporary)
+            base = [json.loads(line) for line in
+                    (root / "metrics" / "base_pools.jsonl").read_text(encoding="utf-8").splitlines()]
+            decisions = [json.loads(line) for line in
+                         (root / "metrics" / "pool_decisions.jsonl").read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(len(base), 3)
+            self.assertEqual(len(decisions), 12)
+            for entry in base:
+                agent_id = entry["agent_id"]
+                self.assertIn(entry["original_id"], entry["pool_ids"])
+                self.assertEqual(entry["pool_fitness"][0],
+                                 engine.archive[entry["original_id"]].fitness)
+                stages = [item for item in decisions if item["agent_id"] == agent_id]
+                self.assertEqual([item["operator"] for item in stages],
+                                 ["H3", "H4", "H5", "H6"])
+                self.assertEqual(stages[0]["pool_before"], entry["pool_ids"])
+                for earlier, later in zip(stages, stages[1:]):
+                    self.assertEqual(earlier["pool_after"], later["pool_before"])
+                for item in stages:
+                    self.assertEqual(len(item["pool_after"]), len(entry["pool_ids"]))
+                    self.assertEqual(item["admitted"],
+                                     item["candidate_fitness"] is not None and
+                                     item["candidate_fitness"] < item["worst_fitness"])
+                best_two = sorted(entry["pool_ids"], key=engine._fitness_key)[:2]
+                self.assertEqual(stages[0]["parent_ids"], best_two)
+                worst_two = sorted(stages[1]["pool_before"],
+                                   key=engine._fitness_key)[-2:][::-1]
+                self.assertEqual(stages[1]["parent_ids"], worst_two)
+                self.assertTrue(stages[0]["admitted"])
+                self.assertTrue(stages[1]["admitted"])
+                self.assertTrue(stages[3]["admitted"])
+                self.assertLessEqual(
+                    engine.archive[engine.agents[agent_id].current_id].fitness,
+                    engine.archive[entry["original_id"]].fitness,
+                )
+
     def test_two_generation_pipeline(self):
         with tempfile.TemporaryDirectory() as temporary:
             problem = FakeProblem()
@@ -199,12 +398,12 @@ class EngineIntegrationTests(unittest.TestCase):
             self.assertEqual(len(engine.agents), 3)
             self.assertTrue(all(agent.current_id in engine.archive for agent in engine.agents))
             self.assertTrue(all(agent.pbest_id for agent in engine.agents))
-            self.assertTrue(any(agent.current_id != agent.pbest_id for agent in engine.agents))
+            self.assertTrue(all(agent.current_id == agent.pbest_id for agent in engine.agents))
             paths = {item.operator_path for item in engine.archive.values()}
             self.assertIn("H0", paths)
-            self.assertIn("DIFF", paths)
-            self.assertIn("H1+H2->H3", paths)
-            self.assertIn("H1+H2->H5", paths)
+            self.assertTrue(paths.intersection({"H1", "H2"}))
+            self.assertTrue(any(path.endswith("->H3") for path in paths))
+            self.assertTrue(any(path.endswith("->H5") for path in paths))
 
             root = Path(temporary)
             self.assertTrue((root / "best" / "best_heuristic.py").is_file())
@@ -213,6 +412,8 @@ class EngineIntegrationTests(unittest.TestCase):
             self.assertTrue((root / "metrics" / "agent_metrics.jsonl").is_file())
             self.assertTrue((root / "metrics" / "operator_metrics.jsonl").is_file())
             self.assertTrue((root / "metrics" / "experience_source_metrics.jsonl").is_file())
+            self.assertTrue((root / "metrics" / "pool_decisions.jsonl").is_file())
+            self.assertTrue((root / "metrics" / "base_pools.jsonl").is_file())
             self.assertTrue((root / "lineage" / "experience_edges.jsonl").is_file())
             self.assertTrue((root / "telemetry" / "events.jsonl").is_file())
             self.assertTrue((root / "telemetry" / "velocity_updates.jsonl").is_file())
@@ -236,7 +437,7 @@ class EngineIntegrationTests(unittest.TestCase):
             checkpoint = json.loads(
                 (root / "checkpoints" / "generation_0001.json").read_text(encoding="utf-8")
             )
-            self.assertEqual(checkpoint["schema_version"], 2)
+            self.assertEqual(checkpoint["schema_version"], 3)
             self.assertTrue(all("velocity" in agent for agent in checkpoint["agents"]))
             self.assertTrue(all("current_id" in agent for agent in checkpoint["agents"]))
             self.assertTrue(any(

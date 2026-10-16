@@ -16,6 +16,41 @@ def clip_probability(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
 
 
+def scheduled_guidance(
+    agent_ids: list[int],
+    *,
+    generation: int,
+    total_generations: int,
+    start: float,
+    end: float,
+    enabled_operators: tuple[str, ...],
+    rng: random.Random,
+) -> tuple[dict[int, str], float]:
+    """Assign one guide per agent with a reproducible, balanced cosine schedule.
+
+    Stochastic rounding preserves the expected H1 count for any agent count;
+    sampling without replacement avoids accidental all-H1 or all-H2 rounds.
+    """
+    ids = sorted(agent_ids)
+    enabled = set(enabled_operators)
+    if not ids or generation < 1 or total_generations < 1:
+        raise ValueError("agents and positive generation numbers are required")
+    if "H1" not in enabled:
+        return {agent_id: "H2" for agent_id in ids}, 0.0
+    if "H2" not in enabled:
+        return {agent_id: "H1" for agent_id in ids}, 1.0
+    progress = min(1.0, max(0.0, (generation - 1) / max(1, total_generations - 1)))
+    p_h1 = end + (start - end) * (1.0 + math.cos(math.pi * progress)) / 2.0
+    expected = len(ids) * p_h1
+    count = math.floor(expected)
+    if rng.random() < expected - count:
+        count += 1
+    if len(ids) >= 2 and 0 < p_h1 < 1:
+        count = max(1, min(len(ids) - 1, count))
+    h1_ids = set(rng.sample(ids, count))
+    return {agent_id: ("H1" if agent_id in h1_ids else "H2") for agent_id in ids}, p_h1
+
+
 def birth_probability(
     source_fitness: float,
     target_fitness: float,

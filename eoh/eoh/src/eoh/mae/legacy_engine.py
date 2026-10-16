@@ -10,7 +10,7 @@ import statistics
 import threading
 import time
 from collections import Counter
-from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_completed, wait
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -60,6 +60,8 @@ class MAEEngine:
         self._cache_hits = 0
         self._evaluation_cache: dict[str, dict[str, Any]] = {}
         self._cache_lock = threading.Lock()
+        self._state_lock = threading.RLock()
+        self._inflight_evaluations: dict[str, Future] = {}
         self._failure_counts: dict[int, Counter] = {}
         self._path_failure_counts: dict[int, Counter] = {}
         self._llm_pool: ThreadPoolExecutor | None = None
@@ -125,11 +127,11 @@ class MAEEngine:
             json.dump(value, handle, ensure_ascii=False, indent=2)
         os.replace(temporary, path)
 
-    @staticmethod
-    def _append_jsonl(path: Path, value: Any) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(value, ensure_ascii=False) + "\n")
+    def _append_jsonl(self, path: Path, value: Any) -> None:
+        with self._state_lock:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(value, ensure_ascii=False) + "\n")
 
     def _seed_for(self, *parts: object) -> int:
         joined = "|".join(str(item) for item in (self.config.seed, *parts))
@@ -179,8 +181,9 @@ class MAEEngine:
         return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
     def _next_individual_id(self) -> str:
-        self._individual_counter += 1
-        return f"ind-{self._individual_counter:08d}"
+        with self._state_lock:
+            self._individual_counter += 1
+            return f"ind-{self._individual_counter:08d}"
 
     # ------------------------------------------------------------ evaluation
 
@@ -189,7 +192,9 @@ class MAEEngine:
 
     def _evaluate_code(self, code: str) -> tuple[float | None, dict[str, Any] | None]:
         if self.config.isolate_evaluation:
-            result = _eval_with_timeout(self.problem, code, self.problem.timeout)
+            result = _eval_with_timeout(
+                self.problem, code, self.problem.timeout, report_failures=True
+            )
         else:
             result = self.problem.evaluate(code)
         if result is None:
@@ -227,8 +232,9 @@ class MAEEngine:
             "failure_reason": reason,
         }
         self._append_jsonl(self.output_dir / "failures" / "failures.jsonl", record)
-        self._failure_counts.setdefault(spec.generation, Counter())[stage] += 1
-        self._path_failure_counts.setdefault(spec.generation, Counter())[operator_path] += 1
+        with self._state_lock:
+            self._failure_counts.setdefault(spec.generation, Counter())[stage] += 1
+            self._path_failure_counts.setdefault(spec.generation, Counter())[operator_path] += 1
         self.recorder.emit(
             "candidate_rejected",
             generation=spec.generation,
@@ -289,7 +295,8 @@ class MAEEngine:
         )
         return True
     def _record_program(self, individual: ProgramIndividual) -> None:
-        self.archive[individual.individual_id] = individual
+        with self._state_lock:
+            self.archive[individual.individual_id] = individual
         self._append_jsonl(
             self.output_dir / "archive" / "programs.jsonl", individual.to_dict()
         )
@@ -318,6 +325,8 @@ class MAEEngine:
         self,
         specs: list[_CandidateSpec],
         seen_by_agent: dict[int, set[str]],
+        *,
+        report_progress: bool = True,
     ) -> list[ProgramIndividual]:
         assert self._eval_pool is not None
         accepted: list[tuple[_CandidateSpec, str]] = []
@@ -395,7 +404,7 @@ class MAEEngine:
                     validation.reason or "invalid program",
                 )
                 continue
-            if spec.parent_ids and spec.variation in ("H4", "H5"):
+            if spec.parent_ids and spec.variation in ("H4", "H5", "H6"):
                 try:
                     child_structure = structural_fingerprint(draft.code)
                     parent_structures = [
@@ -427,11 +436,21 @@ class MAEEngine:
                         "H5 changed structure instead of parameters only",
                     )
                     continue
+                if spec.variation == "H6" and child_structure == parent_structures[0]:
+                    self._record_failure(
+                        spec,
+                        "similarity_violation",
+                        "H6 changed parameters only, not internal structure",
+                    )
+                    continue
             code_hash = self._code_hash(draft.code)
-            if code_hash in seen_by_agent.setdefault(spec.agent_id, set()):
+            with self._state_lock:
+                seen = seen_by_agent.setdefault(spec.agent_id, set())
+                duplicate = code_hash in seen
+                seen.add(code_hash)
+            if duplicate:
                 self._record_failure(spec, "duplicate_code", code_hash)
                 continue
-            seen_by_agent[spec.agent_id].add(code_hash)
             accepted.append((spec, code_hash))
 
         by_key: dict[str, list[tuple[_CandidateSpec, str]]] = {}
@@ -441,15 +460,24 @@ class MAEEngine:
         fitness_by_key: dict[
             str, tuple[float | None, bool, dict[str, Any] | None, float | None]
         ] = {}
-        futures: dict[Future, tuple[str, float]] = {}
+        futures: dict[Future, tuple[str, float, bool]] = {}
         for key, grouped in by_key.items():
             with self._cache_lock:
                 cached = self._evaluation_cache.get(key)
+                if cached is None:
+                    future = self._inflight_evaluations.get(key)
+                    owner = future is None
+                    if owner:
+                        future = self._eval_pool.submit(
+                            self._evaluate_code, grouped[0][0].draft.code
+                        )
+                        self._inflight_evaluations[key] = future
+                else:
+                    self._cache_hits += len(grouped)
             if cached is not None:
                 cached_fitness = float(cached["fitness"])
                 cached_details = cached.get("details")
                 fitness_by_key[key] = (cached_fitness, True, cached_details, 0.0)
-                self._cache_hits += len(grouped)
                 self.recorder.emit(
                     "evaluation_cache_hit",
                     generation=grouped[0][0].generation,
@@ -461,10 +489,9 @@ class MAEEngine:
                     evaluation_details=cached_details,
                 )
             else:
-                future = self._eval_pool.submit(self._evaluate_code, grouped[0][0].draft.code)
-                futures[future] = (key, time.perf_counter())
+                futures[future] = (key, time.perf_counter(), owner)
                 self.recorder.emit(
-                    "evaluation_submitted",
+                    "evaluation_submitted" if owner else "evaluation_shared_inflight",
                     generation=grouped[0][0].generation,
                     agent_id=grouped[0][0].agent_id,
                     topic="evaluation",
@@ -474,10 +501,13 @@ class MAEEngine:
                 )
 
         completed_evaluations = 0
-        for future in self._completed_futures(
-            futures, phase="evaluation", generation=specs[0].generation if specs else None
-        ):
-            key, evaluation_started = futures[future]
+        completion_iterator = (
+            self._completed_futures(
+                futures, phase="evaluation", generation=specs[0].generation if specs else None
+            ) if report_progress else as_completed(futures)
+        )
+        for future in completion_iterator:
+            key, evaluation_started, owner = futures[future]
             try:
                 fitness, evaluation_details = future.result()
             except Exception as exc:
@@ -485,20 +515,24 @@ class MAEEngine:
                 fitness = None
                 evaluation_details = None
             evaluation_seconds = time.perf_counter() - evaluation_started
-            self._evaluation_count += 1
             completed_evaluations += 1
-            if fitness is not None:
-                with self._cache_lock:
+            with self._cache_lock:
+                if owner:
+                    self._evaluation_count += 1
+                    self._inflight_evaluations.pop(key, None)
+                else:
+                    self._cache_hits += len(by_key[key])
+                if fitness is not None:
                     self._evaluation_cache[key] = {
                         "fitness": fitness,
                         "details": evaluation_details,
                     }
             fitness_by_key[key] = (
-                fitness, False, evaluation_details, evaluation_seconds
+                fitness, not owner, evaluation_details, evaluation_seconds
             )
             grouped = by_key[key]
             self.recorder.emit(
-                "evaluation_completed",
+                "evaluation_completed" if owner else "evaluation_shared_completed",
                 generation=grouped[0][0].generation,
                 agent_id=grouped[0][0].agent_id,
                 topic="evaluation",
@@ -510,7 +544,7 @@ class MAEEngine:
                 completed_in_batch=completed_evaluations,
                 total_in_batch=len(futures),
             )
-            if (
+            if report_progress and (
                 completed_evaluations % self.config.progress_log_every == 0
                 or completed_evaluations == len(futures)
             ):
@@ -531,7 +565,8 @@ class MAEEngine:
                 key, (None, False, None, None)
             )
             if not was_cached and len(grouped) > 1:
-                self._cache_hits += len(grouped) - 1
+                with self._cache_lock:
+                    self._cache_hits += len(grouped) - 1
 
         result: list[ProgramIndividual] = []
         for key, grouped in by_key.items():
@@ -540,7 +575,11 @@ class MAEEngine:
             )
             for grouped_index, (spec, code_hash) in enumerate(grouped):
                 if fitness is None:
-                    self._record_failure(spec, "evaluation_failure", "evaluation returned None")
+                    failure = (evaluation_details or {}).get("failure", {})
+                    self._record_failure(
+                        spec, failure.get("stage", "evaluation_failure"),
+                        failure.get("reason", "evaluation returned None"),
+                    )
                     continue
                 operator_path = (
                     f"{spec.guidance}->{spec.variation}"

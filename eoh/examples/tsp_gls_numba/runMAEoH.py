@@ -1,7 +1,7 @@
-"""ÐÞ¸ÄÏÂÃæµÄ²ÎÊýºó£¬Ö±½ÓÔÚ±à¼­Æ÷ÖÐÔËÐÐ±¾ÎÄ¼þ¡£
+"""ä¿®æ”¹ä¸‹é¢çš„å‚æ•°åŽï¼Œç›´æŽ¥åœ¨ç¼–è¾‘å™¨ä¸­è¿è¡Œæœ¬æ–‡ä»¶ã€‚
 
-µ±Ç°ÅäÖÃÎªÍêÕûÔÚÏßÊµÑé£º10 ¸öÖÇÄÜÌå¡¢20 ´ú¡¢200 ¸öÑµÁ·ÊµÀý¡£
-·þÎñÆ÷ºóÌ¨½Å±¾¿ÉÏÔÊ½ÆôÓÃ»·¾³±äÁ¿ÅäÖÃ¡£
+å½“å‰é…ç½®ä¸ºå®Œæ•´åœ¨çº¿å®žéªŒï¼š10 ä¸ªæ™ºèƒ½ä½“ã€20 ä»£ã€200 ä¸ªè®­ç»ƒå®žä¾‹ã€‚
+æœåŠ¡å™¨åŽå°è„šæœ¬å¯æ˜¾å¼å¯ç”¨çŽ¯å¢ƒå˜é‡é…ç½®ã€‚
 """
 
 from __future__ import annotations
@@ -23,11 +23,11 @@ from eoh.mae.validation import TSP_INPUT_CONTRACT, TSP_INPUT_MUTATION_POLICY_ID
 from mae_tsp_adapter import OfflineTSPGenerator, TracedTSPGLS, build_tsp_validator
 
 
-# =========================== ÔÚÕâÀïÐÞ¸ÄÔËÐÐ²ÎÊý ===========================
-# True£ºÀëÏßÔ¤Éè´úÂëÉú³ÉÆ÷£¬ÓÃÓÚ¼ì²éÁ÷³Ì£»False£ºµ÷ÓÃÕæÊµ LLM Éú³É´úÂë¡£
+# =========================== åœ¨è¿™é‡Œä¿®æ”¹è¿è¡Œå‚æ•° ===========================
+# Trueï¼šç¦»çº¿é¢„è®¾ä»£ç ç”Ÿæˆå™¨ï¼Œç”¨äºŽæ£€æŸ¥æµç¨‹ï¼›Falseï¼šè°ƒç”¨çœŸå®ž LLM ç”Ÿæˆä»£ç ã€‚
 OFFLINE = False
 
-# Ä¬ÈÏÖ±½ÓÊ¹ÓÃ±¾ÎÄ¼þ²ÎÊý¡£·þÎñÆ÷Æô¶¯½Å±¾»áÏÔÊ½ÆôÓÃ»·¾³±äÁ¿¸²¸Ç¡£
+# é»˜è®¤ç›´æŽ¥ä½¿ç”¨æœ¬æ–‡ä»¶å‚æ•°ã€‚æœåŠ¡å™¨å¯åŠ¨è„šæœ¬ä¼šæ˜¾å¼å¯ç”¨çŽ¯å¢ƒå˜é‡è¦†ç›–ã€‚
 USE_ENVIRONMENT_OVERRIDES = False
 
 # ------------------------------- LLM ----------------------------------------
@@ -36,26 +36,30 @@ USE_ENVIRONMENT_OVERRIDES = False
 DEEPSEEK_ENDPOINT = "api.deepseek.com"
 # Keep credentials out of source control. Set DEEPSEEK_API_KEY in the shell
 # environment on the local machine or the laboratory server.
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+DEEPSEEK_API_KEY = ""
 DEEPSEEK_MODEL = "deepseek-flash"
 DEEPSEEK_TIMEOUT = 180
 
 # ------------------------------- experiment ---------------------------------
 SEED = 2026
-RUN_NAME = ""                  # Áô¿Õ£ºÃ¿´Îµã»÷ÔËÐÐ×Ô¶¯Éú³ÉÊ±¼ä´ÁÃû³Æ
-RESUME_FROM = None              # ÐøÅÜÊ±ÌîÐ´¼ì²éµãµÄÍêÕûÂ·¾¶
+RUN_NAME = ""                  # ç•™ç©ºï¼šæ¯æ¬¡ç‚¹å‡»è¿è¡Œè‡ªåŠ¨ç”Ÿæˆæ—¶é—´æˆ³åç§°
+RESUME_FROM = None              # ç»­è·‘æ—¶å¡«å†™æ£€æŸ¥ç‚¹çš„å®Œæ•´è·¯å¾„
 TRAIN_DATASET = HERE / "TrainingData" / "custom_TSP200_seed2026_solved.pkl"
 
-NUM_AGENTS = 10                # ÖÇÄÜÌåÊý
+NUM_AGENTS = 10                # æ™ºèƒ½ä½“æ•°
 POSITION_SIZE = 1
-GENERATIONS = 20               # ÑÝ»¯´úÊý£¬²»º¬³õÊ¼»¯
-INITIAL_MULTIPLIER = 10        # Ã¿¸öÖÇÄÜÌå³õÊ¼»¯ºòÑ¡Êý
+GENERATIONS = 20               # æ¼”åŒ–ä»£æ•°ï¼Œä¸å«åˆå§‹åŒ–
+INITIAL_MULTIPLIER = 10        # æ¯ä¸ªæ™ºèƒ½ä½“åˆå§‹åŒ–å€™é€‰æ•°
 
-TRAIN_INSTANCES = 200          # Ê¹ÓÃÈ«²¿ 200 ¸öÑµÁ·ÊµÀý
-GLS_TIME_LIMIT = 60.0          # µ¥ÊµÀýÊ±¼äÉÏÏÞ£¨Ãë£©
-GLS_ITE_MAX = 1000              # µ¥ÊµÀýµü´úÉÏÏÞ
+TRAIN_INSTANCES = 64           # å›ºå®šä½¿ç”¨è‡ªå®šä¹‰æ•°æ®å‰64ä¾‹ï¼Œæ¯ä¾‹200åŸŽå¸‚
+GLS_TIME_LIMIT = 60.0          # å•å®žä¾‹æ—¶é—´ä¸Šé™ï¼ˆç§’ï¼‰
+GLS_ITE_MAX = 1000              # å•å®žä¾‹è¿­ä»£ä¸Šé™
 PERTURBATION_MOVES = 1
-TASK_TIMEOUT = 900             # µ¥ºòÑ¡È«²¿200¸öÊµÀýµÄ×ÜÆÀ²âÉÏÏÞ£¨15·ÖÖÓ£©£¬³¬Ê±ÅÐÊ§°Ü
+TASK_TIMEOUT = 1800            # å•å€™é€‰å®Œæ•´64ä¾‹çš„æ€»è¯„æµ‹ä¸Šé™ï¼ˆ30åˆ†é’Ÿï¼‰ï¼Œè¶…æ—¶åˆ¤å¤±è´¥
+ASYNC_PIPELINE = True          # EoHå¼é‡‡æ ·æµæ°´çº¿ï¼Œå„æ™ºèƒ½ä½“ç‹¬ç«‹æŽ¨è¿›H3/H4/H5/H6
+NUMBA_HEURISTIC = True         # ä¼˜å…ˆNumba nopythonç¼–è¯‘ç”Ÿæˆå‡½æ•°
+REQUIRE_NUMBA = False          # ä¸å…¼å®¹æ—¶å…è®¸Pythonæ‰§è¡Œï¼Œä»å—æ•´å€™é€‰æ€»è¶…æ—¶æŽ§åˆ¶
+MAX_HEURISTIC_CALL_SECONDS = 0.0  # 0å…³é—­å•å›žè°ƒç¡¬é—¨æ§›ï¼›ç»Ÿä¸€ç”±TASK_TIMEOUTæŽ§åˆ¶æ€»è¯„æµ‹æ—¶é—´
 
 # Threads overlap LLM network I/O. Evaluation workers launch isolated EoH
 # subprocesses, so keep NUM_EVALUATORS within the allocated CPU count.
@@ -75,15 +79,17 @@ CUT_MIN_SIZE = 2
 NEIGHBOR_RESERVED_SLOTS = 1
 H1_SELECTION_BOOST = 1.5
 H2_SELECTION_BOOST = 1.5
-ENABLED_OPERATORS = ("H1", "H2", "H3", "H4", "H5")
+H1_PROBABILITY_START = 0.80    # ç¬¬ä¸€ä»£é¢„è®¡ 80% æ™ºèƒ½ä½“é‡‡ç”¨ H1
+H1_PROBABILITY_END = 0.20      # æœ€åŽä¸€ä»£é¢„è®¡ 20% æ™ºèƒ½ä½“é‡‡ç”¨ H1
+ENABLED_OPERATORS = ("H1", "H2", "H3", "H4", "H5", "H6")
 DETAILED_LOGGING = True
 PROGRESS_LOG_EVERY = 5
 HEARTBEAT_INTERVAL_SECONDS = 30.0
 RECORD_FULL_PROMPTS = True
 RECORD_FULL_RESPONSES = True
 
-# ======================== ÒÔÏÂÊÇÔËÐÐÂß¼­£¬Í¨³£²»ÓÃ¸Ä ========================
-# ±£Áô·þÎñÆ÷ºóÌ¨½Å±¾¼æÈÝÐÔ£»ÆÕÍ¨µã»÷ÔËÐÐ²»»á¶ÁÈ¡¾É MAE_* ²ÎÊý¡£
+# ======================== ä»¥ä¸‹æ˜¯è¿è¡Œé€»è¾‘ï¼Œé€šå¸¸ä¸ç”¨æ”¹ ========================
+# ä¿ç•™æœåŠ¡å™¨åŽå°è„šæœ¬å…¼å®¹æ€§ï¼›æ™®é€šç‚¹å‡»è¿è¡Œä¸ä¼šè¯»å–æ—§ MAE_* å‚æ•°ã€‚
 if USE_ENVIRONMENT_OVERRIDES or os.environ.get("MAE_USE_ENVIRONMENT") == "1":
     _smoke = os.environ.get("MAE_SMOKE_TEST", "0") == "1"
     OFFLINE = os.environ.get("MAE_OFFLINE", "0") == "1"
@@ -91,10 +97,10 @@ if USE_ENVIRONMENT_OVERRIDES or os.environ.get("MAE_USE_ENVIRONMENT") == "1":
         "NUM_AGENTS": 2 if _smoke else 10,
         "GENERATIONS": 1 if _smoke else 20,
         "INITIAL_MULTIPLIER": 2 if _smoke else 10,
-        "TRAIN_INSTANCES": 1 if _smoke else 200,
+        "TRAIN_INSTANCES": 1 if _smoke else 64,
         "GLS_TIME_LIMIT": 0.25 if _smoke else 60.0,
         "GLS_ITE_MAX": 20 if _smoke else 1000,
-        "TASK_TIMEOUT": 120 if _smoke else 900,
+        "TASK_TIMEOUT": 120 if _smoke else 1800,
         "NUM_LLM_WORKERS": 4 if _smoke else 16,
         "NUM_EVALUATORS": 4 if _smoke else 16,
     }
@@ -102,10 +108,12 @@ if USE_ENVIRONMENT_OVERRIDES or os.environ.get("MAE_USE_ENVIRONMENT") == "1":
         "SEED", "NUM_AGENTS", "GENERATIONS", "INITIAL_MULTIPLIER",
         "TRAIN_INSTANCES", "GLS_TIME_LIMIT", "GLS_ITE_MAX", "PERTURBATION_MOVES",
         "TASK_TIMEOUT", "NUM_LLM_WORKERS", "NUM_EVALUATORS",
+        "MAX_HEURISTIC_CALL_SECONDS",
         "EXPERIENCE_BIRTH_MIN", "EXPERIENCE_BIRTH_MAX", "EXPERIENCE_TARGET_WEIGHT",
         "EXPERIENCE_HALF_LIFE", "EXPERIENCE_DROP_BELOW", "EXPERIENCE_CAPACITY",
         "CUT_TARGET_SIZE", "CUT_MIN_SIZE", "NEIGHBOR_RESERVED_SLOTS",
         "H1_SELECTION_BOOST", "H2_SELECTION_BOOST",
+        "H1_PROBABILITY_START", "H1_PROBABILITY_END",
     ):
         _default = _defaults.get(_name, globals()[_name])
         globals()[_name] = type(_default)(os.environ.get(f"MAE_{_name}", _default))
@@ -113,6 +121,9 @@ if USE_ENVIRONMENT_OVERRIDES or os.environ.get("MAE_USE_ENVIRONMENT") == "1":
     RESUME_FROM = os.environ.get("MAE_RESUME_FROM") or None
     TRAIN_DATASET = Path(os.environ.get("MAE_TRAIN_DATASET", str(TRAIN_DATASET)))
     ISOLATE_EVALUATION = os.environ.get("MAE_ISOLATE_EVAL", "1") != "0"
+    ASYNC_PIPELINE = os.environ.get("MAE_ASYNC_PIPELINE", "1") != "0"
+    NUMBA_HEURISTIC = os.environ.get("MAE_NUMBA_HEURISTIC", "1") != "0"
+    REQUIRE_NUMBA = os.environ.get("MAE_REQUIRE_NUMBA", "0") == "1"
     ENABLED_OPERATORS = tuple(
         item.strip() for item in os.environ.get(
             "MAE_OPERATORS", ",".join(ENABLED_OPERATORS)
@@ -148,6 +159,14 @@ def build_generator(task):
         local_url=None,
         timeout=DEEPSEEK_TIMEOUT,
     )
+    from heuristic_runtime import NUMBA_CONTRACT
+    execution_contract = (
+        TSP_INPUT_CONTRACT + "\n" + NUMBA_CONTRACT
+        + f" Total evaluation budget for {TRAIN_INSTANCES} instances: {TASK_TIMEOUT} seconds."
+        + (f" Mean callback budget: {MAX_HEURISTIC_CALL_SECONDS:g} seconds."
+           if MAX_HEURISTIC_CALL_SECONDS > 0 else "")
+        if NUMBA_HEURISTIC else TSP_INPUT_CONTRACT
+    )
     return LLMProgramGenerator(
         llm,
         task.task_description,
@@ -157,12 +176,13 @@ def build_generator(task):
         trace_path=OUTPUT_DIR / "prompts" / "llm_calls.jsonl",
         record_full_prompts=RECORD_FULL_PROMPTS,
         record_full_responses=RECORD_FULL_RESPONSES,
-        input_contract=TSP_INPUT_CONTRACT,
+        input_contract=execution_contract,
     )
 
 
 def main():
     global RUN_NAME, OUTPUT_DIR
+    from heuristic_runtime import RUNTIME_VERSION
     if not RUN_NAME:
         if RESUME_FROM:
             RUN_NAME = Path(RESUME_FROM).resolve().parent.parent.name
@@ -180,6 +200,9 @@ def main():
         perturbation_moves=PERTURBATION_MOVES,
         timeout=TASK_TIMEOUT,
         datafile=TRAIN_DATASET,
+        numba_heuristic=NUMBA_HEURISTIC,
+        max_heuristic_call_seconds=MAX_HEURISTIC_CALL_SECONDS,
+        require_numba=REQUIRE_NUMBA,
     )
     task.dataset_sha256 = dataset_sha256
     generator = build_generator(task)
@@ -201,17 +224,23 @@ def main():
         neighbor_reserved_slots=NEIGHBOR_RESERVED_SLOTS,
         h1_selection_boost=H1_SELECTION_BOOST,
         h2_selection_boost=H2_SELECTION_BOOST,
+        h1_probability_start=H1_PROBABILITY_START,
+        h1_probability_end=H1_PROBABILITY_END,
         enabled_operators=ENABLED_OPERATORS,
         num_llm_workers=NUM_LLM_WORKERS,
         num_evaluators=NUM_EVALUATORS,
         isolate_evaluation=ISOLATE_EVALUATION,
+        async_pipeline=ASYNC_PIPELINE,
         output_dir=str(OUTPUT_DIR),
         resume_from=str(RESUME_FROM) if RESUME_FROM else None,
         evaluation_fingerprint=(
             f"tspgls:dataset={TRAIN_DATASET.name}:sha256={dataset_sha256}:"
             f"n={TRAIN_INSTANCES}:time={GLS_TIME_LIMIT}:"
             f"iters={GLS_ITE_MAX}:moves={PERTURBATION_MOVES}:seed={SEED}:"
-            f"validation={TSP_INPUT_MUTATION_POLICY_ID}"
+            f"validation={TSP_INPUT_MUTATION_POLICY_ID}:"
+            f"runtime={RUNTIME_VERSION}:numba={NUMBA_HEURISTIC}:"
+            f"require_numba={REQUIRE_NUMBA}:"
+            f"callback_budget={MAX_HEURISTIC_CALL_SECONDS}"
         ),
         detailed_logging=DETAILED_LOGGING,
         progress_log_every=PROGRESS_LOG_EVERY,
@@ -224,6 +253,9 @@ def main():
     print(f"training dataset: {TRAIN_DATASET}")
     print(f"dataset sha256: {dataset_sha256}")
     print(f"training instances: {TRAIN_INSTANCES}")
+    print(f"async pipeline: {ASYNC_PIPELINE}; Numba heuristic: {NUMBA_HEURISTIC}")
+    callback_budget = f"{MAX_HEURISTIC_CALL_SECONDS}s" if MAX_HEURISTIC_CALL_SECONDS > 0 else "disabled"
+    print(f"candidate timeout: {TASK_TIMEOUT}s; callback budget: {callback_budget}")
     summary = MAEEngine(config, task, generator, validator).run()
     print("MA-EoH finished")
     print(f"best fitness: {summary['best_fitness']}")
